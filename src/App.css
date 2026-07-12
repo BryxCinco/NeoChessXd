@@ -140,6 +140,36 @@ button {
   box-shadow: 0 0 0 2px #000;
 }
 
+/* ── TOP PAUSE MENU TRIGGER (CONTINUE / RESTART / SAVE / OUT) ──
+   Fixed to the very top of the viewport so it's reachable the same way
+   on phones, tablets, AND desktop, and survives the landscape media
+   query that hides .game-header. */
+.top-menu-trigger-btn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 600;
+  background: #000;
+  color: #ffcc00;
+  border: 3px solid #ffcc00;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 10px 14px;
+  cursor: pointer;
+  box-shadow: 3px 3px 0px #000;
+}
+
+.top-menu-trigger-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #000;
+}
+
+.top-menu-trigger-btn:disabled {
+  color: #6b7280;
+  border-color: #6b7280;
+  cursor: not-allowed;
+}
+
 /* ── RETRO ARCADE BENTO MODULES ── */
 .bento-pixel {
   background: #2a2d32;
@@ -266,8 +296,20 @@ button {
 }
 
 .mode-grid { grid-template-columns: repeat(2, 1fr); }
+.start-grid { grid-template-columns: repeat(2, 1fr); }
 .diff-grid { grid-template-columns: repeat(3, 1fr); }
 .time-grid { grid-template-columns: repeat(3, 1fr); }
+
+.start-grid button {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 18px 14px;
+}
+
+.load-game-wizard-section .matches-log-list {
+  max-height: 320px;
+}
 
 .btn-group-pixel button {
   background: #3e4249;
@@ -609,8 +651,26 @@ button {
   box-shadow: 0px 0px 0px #000;
 }
 
+.pixel-action-btn:disabled {
+  background: #4b5563 !important;
+  color: #9ca3af !important;
+  cursor: not-allowed;
+  box-shadow: 2px 2px 0px #000;
+}
+
 .action-save { background: #00ffcc; }
 .action-forfeit { background: #9ca3af; }
+.action-continue { background: #4ade80; }
+.action-restart { background: #fde047; }
+
+.pause-menu-grid {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 4px;
+}
+
+.pause-menu-grid .pixel-action-btn {
+  width: auto;
+}
 
 /* ── MODAL ENGINE OVERLAY EFFECT INSERTS ── */
 .retro-modal-overlay {
@@ -928,6 +988,13 @@ button {
 
   .game-active .pixel-title {
     font-size: 1.1rem;
+  }
+
+  .top-menu-trigger-btn {
+    top: 8px;
+    right: 8px;
+    font-size: 0.55rem;
+    padding: 8px 10px;
   }
 
   .bento-pixel {

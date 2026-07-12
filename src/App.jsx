@@ -26,11 +26,13 @@ function App() {
   const [timeMode, setTimeMode] = useState(null); 
   const [gameStarted, setGameStarted] = useState(false);
 
-  // ── MOBILE / TABLET STEP WIZARD (SELECT MODE → DIFFICULTY → TIME) ──
-  // 'mode'  = step 1, pick AI (bot) or LOCAL (1v1)
-  // 'difficulty' = step 2, ONLY when gameMode === 'bot'
+  // ── MOBILE / TABLET STEP WIZARD (NEW/LOAD → MODE → DIFFICULTY → TIME) ──
+  // 'start' = step 1, pick NEW GAME or LOAD GAME
+  // 'load'  = branch off 'start', shows saved match slots to resume
+  // 'mode'  = step 2, pick AI (bot) or LOCAL (1v1) — only via NEW GAME
+  // 'difficulty' = step 3, ONLY when gameMode === 'bot'
   // 'time'  = final step, pick the time limit, then PUSH START
-  const [menuStep, setMenuStep] = useState('mode');
+  const [menuStep, setMenuStep] = useState('start');
   // Phones AND tablets/iPads (<=1024px) get the compact one-step-at-a-time
   // wizard instead of the long single-page config panel. Anything wider
   // (laptops/desktops) keeps the classic all-in-one layout.
@@ -817,7 +819,24 @@ function App() {
       setMenuStep(gameMode === 'bot' ? 'difficulty' : 'mode');
     } else if (menuStep === 'difficulty') {
       setMenuStep('mode');
+    } else if (menuStep === 'mode' || menuStep === 'load') {
+      setMenuStep('start');
     }
+  }
+
+  // Landing choice: begin a fresh NEW GAME config, or jump straight to LOAD GAME
+  function chooseNewGame() {
+    playRetroSound('click', audioCtxRef);
+    setGameMode(null);
+    setDifficulty(null);
+    setTimeMode(null);
+    setMenuStep('mode');
+  }
+
+  function chooseLoadGame() {
+    playRetroSound('click', audioCtxRef);
+    loadSavedMatchesFromStorage();
+    setMenuStep('load');
   }
 
   function executeQuitToMenu() {
@@ -826,7 +845,7 @@ function App() {
     setGameMode(null);
     setDifficulty(null);
     setTimeMode(null);
-    setMenuStep('mode');
+    setMenuStep('start');
     setGameStarted(false);
     setGame(new Chess());
     setGameStatus("RED TURN");
@@ -854,9 +873,60 @@ function App() {
     </button>
   );
 
+  const startSelectionSection = (
+    <div className="menu-section start-select-section">
+      <h3><span className="menu-section-num">01</span> MAIN MENU</h3>
+      <div className="btn-group-pixel start-grid">
+        <button className="mode-btn-pvp start-choice-btn" onClick={chooseNewGame}>
+          <span className="btn-tag">NEW</span>NEW GAME
+        </button>
+        <button className="mode-btn-cpu start-choice-btn" onClick={chooseLoadGame}>
+          <span className="btn-tag">LOAD</span>LOAD GAME
+        </button>
+      </div>
+    </div>
+  );
+
+  // Shared saved-match card renderer — used by BOTH the compact wizard's
+  // dedicated "LOAD GAME" step and the desktop always-visible save panel,
+  // so the two can never drift out of sync with each other.
+  function renderSaveCard(match) {
+    return (
+      <div key={match.id} className="save-data-card" onClick={() => resumeMatch(match)}>
+        <div className="card-top">
+          <span className="save-mode-badge">
+            {match.gameMode === 'bot' ? `CPU (${match.difficulty.toUpperCase()})` : '1VS1'}
+          </span>
+          <span className="save-time-badge">TIME: {match.timeMode === 'none' ? 'INF' : `${match.timeMode}M`}</span>
+        </div>
+        <div className="card-mid">
+          <div className="card-date">DATE: {match.date}</div>
+          <div className="card-status">{match.gameStatus}</div>
+        </div>
+        <div className="card-bottom-actions">
+          <button className="load-slot-btn">LOAD SLOT</button>
+          <button className="delete-slot-btn" onClick={(e) => triggerDeletePrompt(match.id, e)}>CLR</button>
+        </div>
+      </div>
+    );
+  }
+
+  const loadGameSection = (
+    <div className="menu-section load-game-wizard-section">
+      <h3><span className="menu-section-num">--</span> LOAD GAME</h3>
+      <div className="matches-log-list">
+        {savedMatches.length === 0 ? (
+          <div className="no-saves-banner">-- NO CURRENT DATA FOUND --</div>
+        ) : (
+          savedMatches.map((match) => renderSaveCard(match))
+        )}
+      </div>
+    </div>
+  );
+
   const modeSelectionSection = (
     <div className="menu-section">
-      <h3><span className="menu-section-num">01</span> SELECT MODE</h3>
+      <h3><span className="menu-section-num">02</span> SELECT MODE</h3>
       <div className="btn-group-pixel mode-grid">
         <button className={`mode-btn-pvp ${gameMode === '1v1' ? 'active' : ''}`} onClick={() => { playRetroSound('click', audioCtxRef); setGameMode('1v1'); }}>
           <span className="btn-tag">PVP</span>1 VS 1 LOCAL
@@ -870,7 +940,7 @@ function App() {
 
   const difficultySelectionSection = (
     <div className="menu-section">
-      <h3><span className="menu-section-num">02</span> DIFFICULTY</h3>
+      <h3><span className="menu-section-num">03</span> DIFFICULTY</h3>
       <div className="btn-group-pixel diff-grid">
         <button className={`diff-easy ${difficulty === 'easy' ? 'active' : ''}`} onClick={() => { playRetroSound('click', audioCtxRef); setDifficulty('easy'); }}>EASY</button>
         <button className={`diff-medium ${difficulty === 'medium' ? 'active' : ''}`} onClick={() => { playRetroSound('click', audioCtxRef); setDifficulty('medium'); }}>NORMAL</button>
@@ -881,7 +951,7 @@ function App() {
 
   const timeSelectionSection = (
     <div className="menu-section">
-      <h3><span className="menu-section-num">{gameMode === 'bot' ? '03' : '02'}</span> TIME LIMIT</h3>
+      <h3><span className="menu-section-num">{gameMode === 'bot' ? '04' : '03'}</span> TIME LIMIT</h3>
       <div className="btn-group-pixel time-grid">
         <button className={timeMode === 'none' ? 'active' : ''} onClick={() => { playRetroSound('click', audioCtxRef); setTimeMode('none'); }}>NO LIMIT</button>
         <button className={timeMode === '0.5' ? 'active' : ''} onClick={() => { playRetroSound('click', audioCtxRef); setTimeMode('0.5'); }}>00:30</button>
@@ -900,33 +970,17 @@ function App() {
         {savedMatches.length === 0 ? (
           <div className="no-saves-banner">-- NO CURRENT DATA FOUND --</div>
         ) : (
-          savedMatches.map((match) => (
-            <div key={match.id} className="save-data-card" onClick={() => resumeMatch(match)}>
-              <div className="card-top">
-                <span className="save-mode-badge">
-                  {match.gameMode === 'bot' ? `CPU (${match.difficulty.toUpperCase()})` : '1VS1'}
-                </span>
-                <span className="save-time-badge">TIME: {match.timeMode === 'none' ? 'INF' : `${match.timeMode}M`}</span>
-              </div>
-              <div className="card-mid">
-                <div className="card-date">DATE: {match.date}</div>
-                <div className="card-status">{match.gameStatus}</div>
-              </div>
-              <div className="card-bottom-actions">
-                <button className="load-slot-btn">LOAD SLOT</button>
-                <button className="delete-slot-btn" onClick={(e) => triggerDeletePrompt(match.id, e)}>CLR</button>
-              </div>
-            </div>
-          ))
+          savedMatches.map((match) => renderSaveCard(match))
         )}
       </div>
     </div>
   );
 
-  // Wizard progress dots: 2 steps for LOCAL (mode → time), 3 for BOT (mode → difficulty → time)
-  const wizardTotalSteps = gameMode === 'bot' ? 3 : 2;
+  // Wizard progress dots (NEW GAME path only): start → mode → [difficulty] → time
+  // 3 steps for LOCAL (start → mode → time), 4 for BOT (start → mode → difficulty → time)
+  const wizardTotalSteps = gameMode === 'bot' ? 4 : 3;
   const wizardCurrentStepNumber =
-    menuStep === 'mode' ? 1 : menuStep === 'difficulty' ? 2 : wizardTotalSteps;
+    menuStep === 'start' ? 1 : menuStep === 'mode' ? 2 : menuStep === 'difficulty' ? 3 : wizardTotalSteps;
 
   return (
     <div className={`app-container pixel-art ${gameStarted ? 'game-active' : ''} ${kingCheckedAlert && gameStarted && !game.isGameOver() ? 'screen-flash-active' : ''}`} onClick={triggerInteractiveAudioContext}>
@@ -941,6 +995,22 @@ function App() {
         <h1 className="pixel-title">NEO <span>CHESS DX</span></h1>
         <div className="header-subtitle"><span className="pixel-diamond" />SELECT STAGE WORLD<span className="pixel-diamond" /></div>
       </header>
+
+      {/* ── TOP PAUSE MENU TRIGGER ──
+          Fixed to the top of the screen (not inside .game-header, which
+          gets hidden in the short-landscape mobile media query) so
+          CONTINUE / RESTART / SAVE GAME / OUT stay reachable the same way
+          on phones, tablets, AND desktop. */}
+      {gameStarted && (
+        <button
+          type="button"
+          className="top-menu-trigger-btn"
+          onClick={() => { playRetroSound('click', audioCtxRef); setActiveModal('pause_menu'); }}
+          disabled={isAnimatingMove || pendingPromotion}
+        >
+          ☰ MENU
+        </button>
+      )}
 
       {isStarting && (
         <div className="retro-modal-overlay procedural-start-screen">
@@ -977,6 +1047,41 @@ function App() {
       {activeModal && (
         <div className="retro-modal-overlay">
           <div className="bento-pixel retro-modal-body" style={activeModal === 'game_over' ? { borderColor: '#ffcc00' } : undefined}>
+            {activeModal === 'pause_menu' && (
+              <>
+                <h2 className="modal-title-pixel">[PAUSE MENU]</h2>
+                <div className="btn-group-pixel pause-menu-grid">
+                  <button
+                    className="pixel-action-btn action-continue"
+                    onClick={() => { playRetroSound('click', audioCtxRef); setActiveModal(null); }}
+                  >
+                    ▶ CONTINUE
+                  </button>
+                  <button
+                    className="pixel-action-btn action-restart"
+                    onClick={restartMatch}
+                    disabled={isAnimatingMove || pendingPromotion}
+                  >
+                    ↺ RESTART
+                  </button>
+                  <button
+                    className="pixel-action-btn action-save"
+                    onClick={saveGame}
+                    disabled={isAnimatingMove || pendingPromotion}
+                  >
+                    💾 SAVE GAME
+                  </button>
+                  <button
+                    className="pixel-action-btn action-forfeit"
+                    onClick={() => { playRetroSound('click', audioCtxRef); setActiveModal('confirm_quit'); }}
+                    disabled={isAnimatingMove || pendingPromotion}
+                  >
+                    ⏻ OUT
+                  </button>
+                </div>
+              </>
+            )}
+
             {activeModal === 'save_success' && (
               <>
                 <h2 className="modal-title-pixel">[SYSTEM UPDATE]</h2>
@@ -1037,49 +1142,51 @@ function App() {
                   {audioToggleButton}
                 </div>
 
-                <div className="wizard-progress-track">
-                  {Array.from({ length: wizardTotalSteps }).map((_, idx) => {
-                    const stepNum = idx + 1;
-                    const dotState = stepNum < wizardCurrentStepNumber ? 'done' : stepNum === wizardCurrentStepNumber ? 'active' : 'pending';
-                    return <span key={stepNum} className={`wizard-progress-dot ${dotState}`} />;
-                  })}
-                </div>
+                {menuStep !== 'load' && (
+                  <div className="wizard-progress-track">
+                    {Array.from({ length: wizardTotalSteps }).map((_, idx) => {
+                      const stepNum = idx + 1;
+                      const dotState = stepNum < wizardCurrentStepNumber ? 'done' : stepNum === wizardCurrentStepNumber ? 'active' : 'pending';
+                      return <span key={stepNum} className={`wizard-progress-dot ${dotState}`} />;
+                    })}
+                  </div>
+                )}
 
                 <div className="wizard-step-body">
+                  {menuStep === 'start' && startSelectionSection}
+                  {menuStep === 'load' && loadGameSection}
                   {menuStep === 'mode' && modeSelectionSection}
                   {menuStep === 'difficulty' && gameMode === 'bot' && difficultySelectionSection}
                   {menuStep === 'time' && timeSelectionSection}
                 </div>
 
-                <div className="wizard-nav-row">
-                  {menuStep !== 'mode' && (
+                {menuStep !== 'start' && (
+                  <div className="wizard-nav-row">
                     <button type="button" className="wizard-back-btn" onClick={goToPrevMenuStep}>
                       ◀ BACK
                     </button>
-                  )}
-                  {menuStep !== 'time' ? (
-                    <button
-                      type="button"
-                      className="wizard-next-btn"
-                      onClick={goToNextMenuStep}
-                      disabled={(menuStep === 'mode' && !gameMode) || (menuStep === 'difficulty' && !difficulty)}
-                    >
-                      NEXT ▶
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="start-pixel-btn"
-                      onClick={startGame}
-                      disabled={!gameMode || (gameMode === 'bot' && !difficulty) || !timeMode}
-                    >
-                      PUSH START BUTTON
-                    </button>
-                  )}
-                </div>
+                    {menuStep === 'load' ? null : menuStep !== 'time' ? (
+                      <button
+                        type="button"
+                        className="wizard-next-btn"
+                        onClick={goToNextMenuStep}
+                        disabled={(menuStep === 'mode' && !gameMode) || (menuStep === 'difficulty' && !difficulty)}
+                      >
+                        NEXT ▶
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="start-pixel-btn"
+                        onClick={startGame}
+                        disabled={!gameMode || (gameMode === 'bot' && !difficulty) || !timeMode}
+                      >
+                        PUSH START BUTTON
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-
-              {menuStep === 'mode' && savedMatchesPanel}
             </>
           ) : (
             <>
@@ -1153,14 +1260,6 @@ function App() {
               </div>
             </div>
 
-            <div className="bento-pixel controls-panel-pixel">
-              <button className="pixel-action-btn action-save" onClick={saveGame} disabled={isAnimatingMove || pendingPromotion}>
-                [ SAVE SLOT ]
-              </button>
-              <button className="pixel-action-btn action-forfeit" onClick={() => { playRetroSound('click', audioCtxRef); setActiveModal('confirm_quit'); }} disabled={isAnimatingMove || pendingPromotion}>
-                SELECT MENU
-              </button>
-            </div>
           </div>
         </div>
       )}
