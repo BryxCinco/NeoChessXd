@@ -1135,3 +1135,61 @@ button {
     flex-direction: column;
   }
 }
+/* ── SCORESHEET STYLES ── */
+.scoresheet-container {
+  font-family: 'Courier New', monospace;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.scoresheet-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scoresheet-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.scoresheet-body::-webkit-scrollbar-thumb {
+  background: #4a4a6a;
+  border-radius: 3px;
+}
+
+.scoresheet-body::-webkit-scrollbar-thumb:hover {
+  background: #5a5a7a;
+}
+
+.scoresheet-last-move {
+  animation: pulseMove 1.5s ease-in-out;
+}
+
+@keyframes pulseMove {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .scoresheet-container {
+    margin-left: 8px !important;
+    margin-right: 8px !important;
+  }
+  
+  .scoresheet-body {
+    max-height: 120px !important;
+    font-size: 0.8rem !important;
+  }
+}
+
+/* Desktop: notation now docks inside the 340px sidebar, directly under
+   the P1/P2 panels, so it just fills that column's width. */
+@media (min-width: 1025px) {
+  .scoresheet-container {
+    width: 100%;
+  }
+
+  .scoresheet-body {
+    max-height: 260px;
+  }
+}
