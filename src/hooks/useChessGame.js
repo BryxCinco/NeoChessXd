@@ -7,7 +7,8 @@ const SESSION_KEY = 'neochess_active_session';
 // The CPU always waits at least this long, so an instant reply on EASY
 // doesn't feel like the board glitched.
 const BOT_MIN_THINK_MS = 450;
-const CAPTURE_SAFETY_MS = 1200;
+// Longest elimination effect is ~1.6 s; this only fires if one never finishes.
+const CAPTURE_SAFETY_MS = 2300;
 // Let the cage land and the CHECKMATE banner play before the modal covers it.
 const CHECKMATE_MODAL_DELAY_MS = 1600;
 
@@ -27,7 +28,6 @@ const SQUARE_FX = {
   },
   captureRing: { boxShadow: 'inset 0 0 0 5px rgba(232, 40, 43, 0.8)', cursor: 'pointer' },
   check: { backgroundImage: 'linear-gradient(rgba(232, 40, 43, 0.6), rgba(232, 40, 43, 0.6))' },
-  hidden: { opacity: 0, visibility: 'hidden' },
 };
 
 // Copies a game WITH its move history (a FEN-only copy would forget earlier
@@ -97,7 +97,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // Bumped on every board reset / undo so a capture animation that finishes
   // afterwards can't apply its stale move to the new board.
   const moveTokenRef = useRef(0);
-  const { canvasRef, triggerCaptureAnimation, clearAnimations } = usePixelAnimation();
+  const { canvasRef, triggerCaptureAnimation, triggerElimination, clearAnimations } = usePixelAnimation();
 
   const [gameMode, setGameMode] = useState(null);
   const [difficulty, setDifficulty] = useState(null);
@@ -294,8 +294,10 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
       if (newWidth !== lastWidth || newHeight !== lastHeight) {
         lastWidth = newWidth;
         lastHeight = newHeight;
-        canvasRef.current.width = newWidth;
-        canvasRef.current.height = newHeight;
+        // device-pixel backing store (capped at 2x) so effects stay crisp
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        canvasRef.current.width = Math.round(newWidth * dpr);
+        canvasRef.current.height = Math.round(newHeight * dpr);
       }
 
       if (boardInnerRef.current) {
@@ -434,12 +436,14 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
       setIsAnimatingMove(false);
     };
 
-    // Captured piece vanishes into a pixel effect, then the move lands.
+    // The captured piece is lifted off the board and destroyed on the
+    // canvas (style depends on the capturing piece), then the move lands.
     const animateCapture = (square) => {
       setIsAnimatingMove(true);
       setHiddenSquare(square);
-      const effect = triggerCaptureAnimation(square, commit);
-      if (effect) audio.play(effect);
+      const victimCode = (played.color === 'w' ? 'b' : 'w') + played.captured.toUpperCase();
+      const sound = triggerElimination(square, victimCode, played.piece, played.color, commit);
+      if (sound) audio.play(sound);
       setTimeout(commit, CAPTURE_SAFETY_MS);
     };
 
@@ -650,13 +654,14 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setIsStarting(true);
     setCountdownValue(3);
     countdownTimersRef.current = [
-      setTimeout(() => setCountdownValue(2), 1000),
-      setTimeout(() => setCountdownValue(1), 2000),
+      setTimeout(() => setCountdownValue(2), 900),
+      setTimeout(() => setCountdownValue(1), 1800),
+      setTimeout(() => setCountdownValue('GO!'), 2700),
       setTimeout(() => {
         resetBoard();
         setIsStarting(false);
         if (onDone) onDone();
-      }, 3000),
+      }, 3400),
     ];
   }
 
@@ -702,9 +707,19 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     if (checkedKingSquare) add(checkedKingSquare, SQUARE_FX.check);
     if (selectedSquare) add(selectedSquare, SQUARE_FX.selected);
     for (const m of legalTargets) add(m.to, m.captured ? SQUARE_FX.captureRing : SQUARE_FX.moveDot);
-    if (hiddenSquare) add(hiddenSquare, SQUARE_FX.hidden);
     return styles;
-  }, [lastMoveSquares, checkedKingSquare, selectedSquare, legalTargets, hiddenSquare]);
+  }, [lastMoveSquares, checkedKingSquare, selectedSquare, legalTargets]);
+
+  // Board position shown to react-chessboard: the real FEN, except that a
+  // piece being eliminated is lifted off (its sprite lives on the canvas).
+  const displayPosition = useMemo(() => {
+    if (!hiddenSquare) return game.fen();
+    const position = {};
+    for (const row of game.board()) {
+      for (const p of row) if (p && p.square !== hiddenSquare) position[p.square] = p.color + p.type.toUpperCase();
+    }
+    return position;
+  }, [game, hiddenSquare]);
 
   return {
     boardWrapperRef,
@@ -732,6 +747,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     pendingPromotion,
     boardWidth,
     customSquareStyles,
+    displayPosition,
     moveHistory,
     lastMove,
     canUndo,

@@ -27,6 +27,7 @@ export function GameBoardScreen({
   checkmateFx,
   captured,
   customSquareStyles,
+  displayPosition,
   gameStatus,
   gameMode,
   timeMode,
@@ -43,11 +44,10 @@ export function GameBoardScreen({
   // re-renders when the position, size or square highlights actually
   // change — the single biggest smoothness win on phones. All handlers come
   // from useChessGame with stable identities.
-  const fen = game.fen();
   const board = useMemo(() => (
     <Chessboard
       boardWidth={boardWidth}
-      position={fen}
+      position={displayPosition}
       onPieceDrop={onDrop}
       onSquareClick={onSquareClick}
       onPieceDragBegin={onPieceDragBegin}
@@ -59,7 +59,7 @@ export function GameBoardScreen({
       customLightSquareStyle={LIGHT_SQUARE_STYLE}
       animationDuration={180}
     />
-  ), [boardWidth, fen, onDrop, onSquareClick, onPieceDragBegin, isDraggablePiece, customSquareStyles]);
+  ), [boardWidth, displayPosition, onDrop, onSquareClick, onPieceDragBegin, isDraggablePiece, customSquareStyles]);
 
   const turn = game.turn();
   const timed = timeMode !== 'none';

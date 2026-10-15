@@ -1,4 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
+import { createElimination, FX_BY_ATTACKER, FX_SOUND } from './fx/eliminationFx';
+
+const FX_SPEED = 0.65;
 
 export function usePixelAnimation() {
   const canvasRef = useRef(null);
@@ -25,7 +28,7 @@ export function usePixelAnimation() {
       return;
     }
 
-    const boardRect = boardEl.getBoundingClientRect();
+    const boardRect = canvas.getBoundingClientRect();
     const squareRect = squareEl.getBoundingClientRect();
 
     const x = squareRect.left - boardRect.left + squareRect.width / 2;
@@ -50,6 +53,33 @@ export function usePixelAnimation() {
     return chosenEffect;
   }, []);
 
+  // Destroys the captured piece's own sprite in a style chosen by the
+  // capturing piece (see src/fx/eliminationFx.js). Returns the sound to play.
+  const triggerElimination = useCallback((square, victimCode, attackerType, attackerColor, onComplete) => {
+    const canvas = canvasRef.current;
+    const squareEl = canvas && canvas.parentElement && canvas.parentElement.querySelector(`[data-square="${square}"]`);
+    if (!squareEl) {
+      if (onComplete) onComplete();
+      return null;
+    }
+    const canvasRect = canvas.getBoundingClientRect();
+    const squareRect = squareEl.getBoundingClientRect();
+    const kind = FX_BY_ATTACKER[attackerType] || 'shatter';
+    const fx = createElimination({
+      kind,
+      code: victimCode,
+      x: squareRect.left - canvasRect.left + squareRect.width / 2,
+      y: squareRect.top - canvasRect.top + squareRect.height / 2,
+      size: squareRect.width,
+      attackerColor,
+    });
+    animationsRef.current.push({ type: 'fx', fx, particles: [], currentFrame: 0, maxFrames: fx.duration, onComplete });
+    if (!animationFrameRef.current) {
+      animationFrameRef.current = requestAnimationFrame(updateAndRender);
+    }
+    return FX_SOUND[kind];
+  }, []);
+
   // Hiwalay na function para sa kulungan ng hari para madaling ma-trigger nang pambukod
   const triggerKingCageAnimation = useCallback((square, onComplete) => {
     if (!canvasRef.current) {
@@ -69,7 +99,7 @@ export function usePixelAnimation() {
       return;
     }
 
-    const boardRect = boardEl.getBoundingClientRect();
+    const boardRect = canvas.getBoundingClientRect();
     const squareRect = squareEl.getBoundingClientRect();
 
     const x = squareRect.left - boardRect.left + squareRect.width / 2;
@@ -83,7 +113,7 @@ export function usePixelAnimation() {
   function createEffect(type, x, y, size, onComplete) {
     const particles = [];
     // Phones get ~60% of the particles — same look, much less work per frame.
-    const density = canvasRef.current && canvasRef.current.width < 520 ? 0.6 : 1;
+    const density = canvasRef.current && canvasRef.current.clientWidth < 520 ? 0.6 : 1;
     let duration = 50; 
 
     if (type === 'fire') {
@@ -401,12 +431,24 @@ export function usePixelAnimation() {
     lastFrameRef.current = now;
 
     const ctx = canvas.getContext('2d');
+    // The canvas is sized in device pixels (crisp on retina); draw in CSS px.
+    const dpr = canvas.clientWidth ? canvas.width / canvas.clientWidth : 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     let activeAnimations = [];
 
     animationsRef.current.forEach((anim) => {
-      anim.currentFrame++;
+      if (anim.type === 'fx') {
+        // time-based: 1 frame = 1/60 s since the effect started
+        if (anim.startTime === undefined) anim.startTime = now;
+        // FX_SPEED < 1 plays eliminations a bit slower than real time so
+        // every step of the destruction is readable.
+        anim.currentFrame = Math.floor(((now - anim.startTime) / (1000 / 60)) * FX_SPEED) + 1;
+        anim.fx.draw(ctx, anim.currentFrame);
+      } else {
+        anim.currentFrame++;
+      }
 
       if (anim.type === 'fire') {
         anim.particles.forEach((p) => {
@@ -1141,12 +1183,16 @@ export function usePixelAnimation() {
     animationFrameRef.current = null;
     animationsRef.current = [];
     const canvas = canvasRef.current;
-    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
   }, []);
 
   useEffect(() => () => {
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
   }, []);
 
-  return { canvasRef, triggerCaptureAnimation, triggerKingCageAnimation, clearAnimations };
+  return { canvasRef, triggerCaptureAnimation, triggerElimination, triggerKingCageAnimation, clearAnimations };
 }

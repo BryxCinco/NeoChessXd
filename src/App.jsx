@@ -13,6 +13,7 @@ import { GameModals } from './components/GameModals';
 import { StartMenuScreen } from './components/StartMenuScreen';
 import { GameBoardScreen } from './components/GameBoardScreen';
 import { PieceSprite } from './pixelPieces';
+import { PixelLogo } from './components/PixelLogo';
 
 function App() {
   const [activeModal, setActiveModal] = useState(null);
@@ -55,7 +56,7 @@ function App() {
 
       {!chess.gameStarted && (
         <header className="game-header">
-          <h1 className="pixel-title">NEO <span>CHESS DX</span></h1>
+          <PixelLogo />
           <div className="header-vs" aria-hidden="true">
             <div className="header-army">
               {['wP', 'wN', 'wB', 'wR', 'wQ'].map((code) => (
@@ -127,16 +128,15 @@ function App() {
             </button>
           </div>
 
-          <h1
-            className="pixel-title pixel-title-mini"
-            style={{ pointerEvents: 'auto', margin: 0, fontSize: '1rem' }}
-          >
-            NEO <span>CHESS DX</span>
-          </h1>
+          <div style={{ pointerEvents: 'auto' }}>
+            <PixelLogo size="sm" as="div" />
+          </div>
         </div>
       )}
 
-      {chess.isStarting && <CountdownOverlay countdownValue={chess.countdownValue} />}
+      {chess.isStarting && (
+        <CountdownOverlay countdownValue={chess.countdownValue} gameMode={chess.gameMode} difficulty={chess.difficulty} />
+      )}
 
       {chess.pendingPromotion && (
         <PromotionModal
@@ -200,6 +200,7 @@ function App() {
             isDraggablePiece={chess.isDraggablePiece}
             botThinking={chess.botThinking}
             customSquareStyles={chess.customSquareStyles}
+            displayPosition={chess.displayPosition}
             gameStatus={chess.gameStatus}
             gameMode={chess.gameMode}
             timeMode={chess.timeMode}
