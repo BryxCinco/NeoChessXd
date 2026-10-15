@@ -14,9 +14,11 @@ import { StartMenuScreen } from './components/StartMenuScreen';
 import { GameBoardScreen } from './components/GameBoardScreen';
 import { PieceSprite } from './pixelPieces';
 import { PixelLogo } from './components/PixelLogo';
+import { FxGallery } from './components/FxGallery';
 
 function App() {
   const [activeModal, setActiveModal] = useState(null);
+  const [showGallery, setShowGallery] = useState(false);
 
   const audio = useAudio();
   const chess = useChessGame({ audio, activeModal, setActiveModal });
@@ -31,7 +33,7 @@ function App() {
     triggerInteractiveAudioContext: audio.triggerInteractiveAudioContext,
   });
 
-  useScrollLock(chess.isStarting || !!activeModal || !!chess.pendingPromotion);
+  useScrollLock(chess.isStarting || !!activeModal || !!chess.pendingPromotion || showGallery);
 
   function executeQuitToMenu() {
     chess.quitMatch();
@@ -73,6 +75,13 @@ function App() {
             </div>
           </div>
           <div className="header-subtitle"><span className="pixel-diamond" />SELECT STAGE WORLD<span className="pixel-diamond" /></div>
+          <button
+            type="button"
+            className="fx-gallery-open-btn"
+            onClick={() => { audio.triggerInteractiveAudioContext(); audio.play('click'); setShowGallery(true); }}
+          >
+            ★ FX GALLERY
+          </button>
         </header>
       )}
 
@@ -133,6 +142,8 @@ function App() {
           </div>
         </div>
       )}
+
+      {showGallery && <FxGallery play={audio.play} onClose={() => setShowGallery(false)} />}
 
       {chess.isStarting && (
         <CountdownOverlay countdownValue={chess.countdownValue} gameMode={chess.gameMode} difficulty={chess.difficulty} />

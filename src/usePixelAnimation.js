@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { createElimination, FX_BY_ATTACKER, FX_SOUND } from './fx/eliminationFx';
+import { createElimination, pickEffect, FX_SOUND } from './fx/eliminationFx';
 
 const FX_SPEED = 0.65;
 
@@ -64,7 +64,7 @@ export function usePixelAnimation() {
     }
     const canvasRect = canvas.getBoundingClientRect();
     const squareRect = squareEl.getBoundingClientRect();
-    const kind = FX_BY_ATTACKER[attackerType] || 'shatter';
+    const kind = pickEffect(attackerType);
     const fx = createElimination({
       kind,
       code: victimCode,
