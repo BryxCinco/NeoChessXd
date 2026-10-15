@@ -41,6 +41,7 @@ export function useSavedMatches({ chess, audio, setActiveModal }) {
     const newMatchSave = {
       id: 'match_' + Date.now(),
       date: formattedDate,
+      pgn: chess.game.pgn(),
       fen: chess.game.fen(),
       gameMode: chess.gameMode,
       difficulty: chess.difficulty,
@@ -48,6 +49,7 @@ export function useSavedMatches({ chess, audio, setActiveModal }) {
       gameStatus: chess.gameStatus,
       whiteTime: chess.whiteTime,
       blackTime: chess.blackTime,
+      timeoutLoser: chess.timeoutLoser,
     };
 
     const updatedMatches = [newMatchSave, ...savedMatches];

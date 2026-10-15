@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './App.css';
 
 import { useAudio, useBgmLoop } from './hooks/useAudio';
@@ -17,7 +17,7 @@ function App() {
   const [activeModal, setActiveModal] = useState(null);
 
   const audio = useAudio();
-  const chess = useChessGame({ audio, setActiveModal });
+  const chess = useChessGame({ audio, activeModal, setActiveModal });
   const matches = useSavedMatches({ chess, audio, setActiveModal });
   const wizard = useMenuWizard({ chess, matches, audio });
   const { isCompactLayout } = useResponsiveLayout();
@@ -42,11 +42,11 @@ function App() {
   return (
     <div
       className={`app-container pixel-art ${chess.gameStarted ? 'game-active' : ''} ${
-        chess.kingCheckedAlert && chess.gameStarted && !chess.game.isGameOver() ? 'screen-flash-active' : ''
+        chess.kingCheckedAlert && chess.gameStarted && !chess.isGameOver ? 'screen-flash-active' : ''
       }`}
       onClick={audio.triggerInteractiveAudioContext}
     >
-      {chess.kingCheckedAlert && chess.gameStarted && !chess.game.isGameOver() && (
+      {chess.kingCheckedAlert && chess.gameStarted && !chess.isGameOver && (
         <div className="screen-flash-overlay" onClick={() => chess.setKingCheckedAlert(false)}>
           <div className="flash-alert-text">CHECK!</div>
         </div>
@@ -142,7 +142,7 @@ function App() {
         <StartMenuScreen
           isCompactLayout={isCompactLayout}
           isMuted={audio.isMuted}
-          onToggleAudio={() => { audio.setIsMuted(!audio.isMuted); audio.triggerInteractiveAudioContext(); }}
+          onToggleAudio={audio.toggleMute}
           menuStep={wizard.menuStep}
           wizardTotalSteps={wizard.wizardTotalSteps}
           wizardCurrentStepNumber={wizard.wizardCurrentStepNumber}
@@ -170,6 +170,8 @@ function App() {
             boardWidth={chess.boardWidth}
             game={chess.game}
             onDrop={chess.onDrop}
+            isDraggablePiece={chess.isDraggablePiece}
+            botThinking={chess.botThinking}
             customSquareStyles={chess.customSquareStyles}
             gameStatus={chess.gameStatus}
             gameMode={chess.gameMode}

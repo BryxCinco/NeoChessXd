@@ -1,12 +1,82 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import { usePixelAnimation } from '../usePixelAnimation';
+import { requestBotMove } from '../bot/requestBotMove';
 
-export function useChessGame({ audio, setActiveModal }) {
+const SESSION_KEY = 'neochess_active_session';
+// The CPU always waits at least this long, so an instant reply on EASY
+// doesn't feel like the board glitched.
+const BOT_MIN_THINK_MS = 450;
+const CAPTURE_SAFETY_MS = 1200;
+
+// Copies a game WITH its move history (a FEN-only copy would forget earlier
+// positions, so threefold repetition and the scoresheet would break).
+function cloneGame(g) {
+  const copy = new Chess();
+  copy.loadPgn(g.pgn());
+  return copy;
+}
+
+// Rebuilds a game from a save slot / session. New saves carry the PGN;
+// older ones only had a FEN.
+export function restoreGame(save) {
+  if (save.pgn) {
+    try {
+      const g = new Chess();
+      g.loadPgn(save.pgn);
+      return g;
+    } catch {
+      // fall back to the FEN below
+    }
+  }
+  return new Chess(save.fen);
+}
+
+function findKingSquare(g, color) {
+  for (const row of g.board()) {
+    for (const p of row) {
+      if (p && p.type === 'k' && p.color === color) return p.square;
+    }
+  }
+  return null;
+}
+
+// Whether `color` could still deliver mate at all — a lone king or king +
+// one minor piece can't, so running out of time against it is a draw.
+function hasMatingMaterial(g, color) {
+  let minors = 0;
+  for (const row of g.board()) {
+    for (const p of row) {
+      if (!p || p.color !== color || p.type === 'k') continue;
+      if (p.type === 'n' || p.type === 'b') minors++;
+      else return true;
+    }
+  }
+  return minors >= 2;
+}
+
+function drawReason(g) {
+  if (g.isStalemate()) return 'STALEMATE';
+  if (g.isInsufficientMaterial()) return 'NO MATING MATERIAL';
+  if (g.isThreefoldRepetition()) return '3-FOLD REPETITION';
+  return '50-MOVE RULE';
+}
+
+function formatTime(seconds) {
+  const total = Math.max(0, Math.ceil(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+export function useChessGame({ audio, activeModal, setActiveModal }) {
   const boardWrapperRef = useRef(null);
   const boardInnerRef = useRef(null);
-  const timerRef = useRef(null);
-  const { canvasRef, triggerCaptureAnimation } = usePixelAnimation();
+  const countdownTimersRef = useRef([]);
+  // Bumped on every board reset / undo so a capture animation that finishes
+  // afterwards can't apply its stale move to the new board.
+  const moveTokenRef = useRef(0);
+  const { canvasRef, triggerCaptureAnimation, clearAnimations } = usePixelAnimation();
 
   const [gameMode, setGameMode] = useState(null);
   const [difficulty, setDifficulty] = useState(null);
@@ -17,8 +87,13 @@ export function useChessGame({ audio, setActiveModal }) {
   const [countdownValue, setCountdownValue] = useState(3);
 
   const [game, setGame] = useState(() => new Chess());
-  const [gameStatus, setGameStatus] = useState('PLAYER 1 TURN');
+  const [gameStatus, setGameStatus] = useState('RED TURN');
+  // 'w' | 'b' when that side's clock hit zero — the board position alone
+  // doesn't know the game ended on time.
+  const [timeoutLoser, setTimeoutLoser] = useState(null);
+  const [botThinking, setBotThinking] = useState(false);
 
+  // Remaining clock time in (fractional) seconds.
   const [whiteTime, setWhiteTime] = useState(600);
   const [blackTime, setBlackTime] = useState(600);
 
@@ -31,48 +106,82 @@ export function useChessGame({ audio, setActiveModal }) {
 
   const [pendingPromotion, setPendingPromotion] = useState(null);
 
+  // Undo / redo stacks of earlier / later game states. Every Chess instance
+  // is treated as immutable (moves always go onto a clone), so they can be
+  // stored and restored directly.
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
 
-  // ── MOVE NOTATION / SCORESHEET ENGINE ──
-  // Parallel arrays: moveHistory stores SAN strings per move pair,
-  // moveNumbers tracks the move numbers for display.
-  const [moveHistory, setMoveHistory] = useState([]);
-  const moveHistoryRef = useRef([]);
+  const isGameOver = !!timeoutLoser || game.isGameOver();
 
-  const [lastMove, setLastMove] = useState(null);
-
-  // ── LOAD ACTIVE SESSION FROM LOCAL STORAGE ON MOUNT ──
-  useEffect(() => {
-    const currentSession = localStorage.getItem('neochess_active_session');
-    if (currentSession) {
-      try {
-        const session = JSON.parse(currentSession);
-        const loadedGame = new Chess(session.fen);
-        setGame(loadedGame);
-        setGameMode(session.gameMode);
-        setDifficulty(session.difficulty);
-        setTimeMode(session.timeMode);
-        setGameStatus(session.gameStatus);
-        setWhiteTime(session.whiteTime);
-        setBlackTime(session.blackTime);
-        setKingCheckedAlert(loadedGame.inCheck());
-        setGameStarted(session.gameStarted);
-        if (session.moveHistory) {
-          setMoveHistory(session.moveHistory);
-          moveHistoryRef.current = session.moveHistory;
-        }
-        if (session.lastMove) setLastMove(session.lastMove);
-      } catch (e) {
-        console.error('Failed to restore active session:', e);
+  // ── MOVE NOTATION / SCORESHEET ──
+  // Derived straight from the game's own move list, so it is always in sync
+  // after moves, undo, redo and loading.
+  const moveHistory = useMemo(() => {
+    const moves = game.history({ verbose: true });
+    const rows = [];
+    for (const m of moves) {
+      if (m.color === 'w' || rows.length === 0) {
+        rows.push({ number: rows.length + 1, white: m.color === 'w' ? m.san : null, black: m.color === 'b' ? m.san : null });
+      } else {
+        rows[rows.length - 1].black = m.san;
       }
     }
+    return rows;
+  }, [game]);
+  const lastMove = useMemo(() => {
+    const last = moveHistory[moveHistory.length - 1];
+    return last ? last.black || last.white : null;
+  }, [moveHistory]);
+
+  function sideLabel(color) {
+    if (color === 'w') return gameMode === 'bot' ? 'RED (P1 / YOU)' : 'RED (P1)';
+    return gameMode === 'bot' ? 'BLUE (P2 / CPU)' : 'BLUE (P2)';
+  }
+
+  // Loads a save slot / session into the live game state.
+  function loadMatchState(save) {
+    const loadedGame = restoreGame(save);
+    moveTokenRef.current++;
+    clearAnimations();
+    setGame(loadedGame);
+    setGameMode(save.gameMode);
+    setDifficulty(save.difficulty);
+    setTimeMode(save.timeMode);
+    setGameStatus(save.gameStatus);
+    setWhiteTime(save.whiteTime);
+    setBlackTime(save.blackTime);
+    setTimeoutLoser(save.timeoutLoser || null);
+    setKingCheckedAlert(loadedGame.inCheck() && !loadedGame.isGameOver());
+    setHiddenSquare(null);
+    setIsAnimatingMove(false);
+    setPendingPromotion(null);
+    setHistory([]);
+    setFuture([]);
+    setActiveModal(save.timeoutLoser || loadedGame.isGameOver() ? 'game_over' : null);
+    setGameStarted(true);
+  }
+
+  // ── RESTORE ACTIVE SESSION ON MOUNT ──
+  useEffect(() => {
+    try {
+      const session = JSON.parse(localStorage.getItem(SESSION_KEY));
+      if (session && session.gameStarted) loadMatchState(session);
+    } catch (e) {
+      console.error('Failed to restore active session:', e);
+    }
+    return () => countdownTimersRef.current.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only restore
   }, []);
 
-  // ── AUTO-SAVE ACTIVE STATE CHANGES ──
-  useEffect(() => {
-    if (gameStarted) {
-      const sessionData = {
+  // ── AUTO-SAVE ACTIVE SESSION ──
+  // Building the PGN replays the whole game, so it's NOT done on every
+  // clock tick: we save after each move, every few seconds, and when the
+  // tab is hidden / closed.
+  const buildSessionRef = useRef(null);
+  buildSessionRef.current = gameStarted
+    ? () => ({
+        pgn: game.pgn(),
         fen: game.fen(),
         gameMode,
         difficulty,
@@ -80,13 +189,38 @@ export function useChessGame({ audio, setActiveModal }) {
         gameStatus,
         whiteTime,
         blackTime,
+        timeoutLoser,
         gameStarted,
-        moveHistory,
-        lastMove,
-      };
-      localStorage.setItem('neochess_active_session', JSON.stringify(sessionData));
+      })
+    : null;
+
+  const persistSession = useCallback(() => {
+    if (!buildSessionRef.current) return;
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(buildSessionRef.current()));
+    } catch {
+      // storage full / blocked (private mode) — the game still plays fine
     }
-  }, [game, gameMode, difficulty, timeMode, gameStatus, whiteTime, blackTime, gameStarted, moveHistory, lastMove]);
+  }, []);
+
+  useEffect(() => {
+    if (gameStarted) persistSession();
+  }, [game, gameStarted, gameStatus, timeoutLoser, persistSession]);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+    const id = setInterval(persistSession, 3000);
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') persistSession();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', persistSession);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', persistSession);
+    };
+  }, [gameStarted, persistSession]);
 
   // Handle dynamic canvas resizing
   useEffect(() => {
@@ -145,501 +279,280 @@ export function useChessGame({ audio, setActiveModal }) {
     };
   }, [gameStarted, canvasRef]);
 
-  // ── TIMER COUNTDOWN ENGINE ──
+  // ── CHESS CLOCK ──
+  // Pauses while any menu/modal, the countdown, a promotion pick or a
+  // capture animation is on screen. Elapsed time is measured with
+  // Date.now(), so moving quickly can't skip the partial second a plain
+  // 1-second setInterval would drop.
+  const clockRunning = gameStarted && timeMode !== 'none' && !isGameOver
+    && !isStarting && !activeModal && !pendingPromotion && !isAnimatingMove;
+  const sideToMove = game.turn();
+
   useEffect(() => {
-    if (!gameStarted || timeMode === 'none' || isAnimatingMove || pendingPromotion) return;
-
-    if (game.isGameOver()) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-
-    timerRef.current = setInterval(() => {
-      if (game.turn() === 'w') {
-        setWhiteTime((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            setGameStatus('GAME OVER - BLUE WINS!');
-            setActiveModal('game_over');
-            audio.play('success');
-            return 0;
-          }
-          return prev - 1;
-        });
-      } else {
-        setBlackTime((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            setGameStatus('GAME OVER - RED WINS!');
-            setActiveModal('game_over');
-            audio.play('success');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+    if (!clockRunning) return;
+    const setTime = sideToMove === 'w' ? setWhiteTime : setBlackTime;
+    let last = Date.now();
+    const tick = () => {
+      const now = Date.now();
+      const elapsed = (now - last) / 1000;
+      last = now;
+      setTime((t) => Math.max(0, t - elapsed));
     };
-  }, [game, gameStarted, timeMode, isAnimatingMove, pendingPromotion]);
+    const id = setInterval(tick, 250);
+    return () => {
+      clearInterval(id);
+      tick(); // bank the time since the last tick
+    };
+  }, [clockRunning, sideToMove, game]);
 
-  function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  }
+  // ── TIME-OUT DETECTION ──
+  useEffect(() => {
+    if (!gameStarted || timeMode === 'none' || isGameOver) return;
+    const loser = whiteTime <= 0 ? 'w' : blackTime <= 0 ? 'b' : null;
+    if (!loser) return;
+
+    const winner = loser === 'w' ? 'b' : 'w';
+    setTimeoutLoser(loser);
+    setKingCheckedAlert(false);
+    setGameStatus(
+      hasMatingMaterial(game, winner)
+        ? `TIME OUT - WINNER: ${sideLabel(winner)}`
+        : 'DRAW - TIME OUT (NO MATING MATERIAL)'
+    );
+    setActiveModal('game_over');
+    audio.play('success');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-check when a clock changes
+  }, [whiteTime, blackTime]);
 
   function updateStatus(currentGame) {
-    if (currentGame.inCheck() && !currentGame.isCheckmate()) {
-      setKingCheckedAlert(true);
-      audio.play('check_alert');
-    } else {
-      setKingCheckedAlert(false);
-    }
-
     if (currentGame.isCheckmate()) {
-      const winnerLabel =
-        currentGame.turn() === 'w' ? `BLUE (P2${gameMode === 'bot' ? ' / CPU' : ''})` : 'RED (P1 / YOU)';
-      setGameStatus(`WINNER: ${winnerLabel}`);
-      if (timerRef.current) clearInterval(timerRef.current);
+      // The side to move is the one that got mated, so the OTHER side won.
+      const winner = currentGame.turn() === 'w' ? 'b' : 'w';
+      setKingCheckedAlert(false);
+      setGameStatus(`WINNER: ${sideLabel(winner)}`);
       setActiveModal('game_over');
       audio.play('success');
     } else if (currentGame.isDraw()) {
-      setGameStatus('GAME DRAWN');
-      if (timerRef.current) clearInterval(timerRef.current);
+      setKingCheckedAlert(false);
+      setGameStatus(`DRAW - ${drawReason(currentGame)}`);
       setActiveModal('game_over');
     } else {
+      const inCheck = currentGame.inCheck();
+      setKingCheckedAlert(inCheck);
+      if (inCheck) audio.play('check_alert');
       setGameStatus(`${currentGame.turn() === 'w' ? 'RED' : 'BLUE'} TURN`);
     }
   }
 
-  function isUnderpromotionValid(pieceType, turnColor) {
-    const board = game.board();
-    let existingPiecesCount = 0;
-
-    for (let i = 0; i < 8; i++) {
-      for (let j = 0; j < 8; j++) {
-        const p = board[i][j];
-        if (p && p.type === pieceType && p.color === turnColor) {
-          existingPiecesCount++;
-        }
-      }
+  // ── Shared move resolver (player drops, promotions AND the CPU) ──
+  // Captures and checkmates play a pixel animation first and only commit
+  // the move when it finishes. A safety-net timeout guarantees the move
+  // (and the GAME OVER modal) still lands if an animation callback never fires.
+  function resolveAndAnimateMove(move) {
+    let next;
+    let played;
+    try {
+      next = cloneGame(game);
+      played = next.move(move);
+    } catch {
+      return false;
     }
+    if (!played) return false;
 
-    if (pieceType === 'q') return existingPiecesCount < 1;
-    if (pieceType === 'r') return existingPiecesCount < 2;
-    if (pieceType === 'b') return existingPiecesCount < 2;
-    if (pieceType === 'n') return existingPiecesCount < 2;
-
-    return true;
-  }
-
-  function handlePromotionSelection(chosenPiece) {
-    if (!pendingPromotion) return;
-
-    const { from, to } = pendingPromotion;
-    const currentTurn = game.turn();
-
-    const isValid = isUnderpromotionValid(chosenPiece, currentTurn);
-    const finalPromotePiece = isValid ? chosenPiece : 'q';
-
-    const moveData = { from, to, promotion: finalPromotePiece };
-
-    setPendingPromotion(null);
-    executeMoveResolution(moveData);
-  }
-
-  function findKingSquareForColor(boardMatrix, color) {
-    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
-    for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        const tile = boardMatrix[r][c];
-        if (tile && tile.type === 'k' && tile.color === color) {
-          return files[c] + ranks[r];
-        }
-      }
-    }
-    return null;
-  }
-
-  // ── NOTATION HELPER: Build SAN from a move object ──
-  function getSanFromMove(moveObj, baseGame) {
-    const temp = new Chess(baseGame.fen());
-    const result = temp.move(moveObj);
-    return result ? result.san : null;
-  }
-
-  function resolveAndAnimateMove(move, baseFen) {
-    setHistory((prev) => [...prev, baseFen]);
-    setFuture([]);
-
-    const snapshot = new Chess(baseFen);
-    const targetPiece = snapshot.get(move.to);
-    const nextStateTest = new Chess(baseFen);
-    nextStateTest.move(move);
-    const deliversCheckmate = nextStateTest.isCheckmate();
-
-    // Generate SAN notation BEFORE applying animation
-    const sanMove = getSanFromMove(move, snapshot);
-    const turnBefore = snapshot.turn();
-
+    const base = game;
+    const token = moveTokenRef.current;
     let settled = false;
-    const settleOnce = () => {
-      if (settled) return;
+    const commit = () => {
+      if (settled || token !== moveTokenRef.current) return;
       settled = true;
-      setGame((prev) => {
-        const next = new Chess(prev.fen());
-        try {
-          next.move(move);
-          updateStatus(next);
-          return next;
-        } catch (err) {
-          return prev;
-        }
-      });
+      setHistory((prev) => [...prev, base]);
+      setFuture([]);
+      setGame(next);
+      updateStatus(next);
       setHiddenSquare(null);
       setIsAnimatingMove(false);
-
-      // ── APPEND NOTATION TO SCORESHEET ──
-      if (sanMove) {
-        setMoveHistory((prev) => {
-          const newHistory = [...prev];
-          if (turnBefore === 'w') {
-            // White's move: start a new move pair
-            newHistory.push({ number: Math.floor(newHistory.length) + 1, white: sanMove, black: null });
-          } else {
-            // Black's move: complete the last pair
-            if (newHistory.length > 0) {
-              newHistory[newHistory.length - 1] = {
-                ...newHistory[newHistory.length - 1],
-                black: sanMove,
-              };
-            } else {
-              // Edge case: black moves first (shouldn't happen in standard chess)
-              newHistory.push({ number: 1, white: null, black: sanMove });
-            }
-          }
-          moveHistoryRef.current = newHistory;
-          return newHistory;
-        });
-        setLastMove(sanMove);
-      }
     };
 
-    if (deliversCheckmate) {
-      const losingKingSquare = findKingSquareForColor(nextStateTest.board(), nextStateTest.turn());
+    const animateOn = (square, effectType) => {
+      setIsAnimatingMove(true);
+      setHiddenSquare(square);
+      const effect = triggerCaptureAnimation(square, commit, effectType);
+      if (effectType === 'cage') audio.play('sandworm');
+      else if (effect) audio.play(effect);
+      setTimeout(commit, CAPTURE_SAFETY_MS);
+    };
 
+    if (next.isCheckmate()) {
+      const losingKingSquare = findKingSquare(next, next.turn());
       if (losingKingSquare) {
-        setIsAnimatingMove(true);
-        setHiddenSquare(losingKingSquare);
-        triggerCaptureAnimation(losingKingSquare, settleOnce, 'cage');
-        audio.play('sandworm');
-        setTimeout(settleOnce, 1200);
+        animateOn(losingKingSquare, 'cage');
         return true;
       }
     }
 
-    if (targetPiece) {
-      setIsAnimatingMove(true);
-      setHiddenSquare(move.to);
-      const effect = triggerCaptureAnimation(move.to, settleOnce);
-      if (effect) audio.play(effect);
-      setTimeout(settleOnce, 1200);
+    if (played.captured) {
+      // En passant removes a pawn that is NOT on the destination square.
+      const capturedSquare = played.flags.includes('e') ? played.to[0] + played.from[1] : played.to;
+      animateOn(capturedSquare);
       return true;
     }
 
-    const result = snapshot.move(move);
-    if (result) {
-      audio.play('click');
-      setGame(snapshot);
-      updateStatus(snapshot);
-      // Append notation for non-capture moves
-      if (sanMove) {
-        setMoveHistory((prev) => {
-          const newHistory = [...prev];
-          if (turnBefore === 'w') {
-            newHistory.push({ number: Math.floor(newHistory.length) + 1, white: sanMove, black: null });
-          } else {
-            if (newHistory.length > 0) {
-              newHistory[newHistory.length - 1] = {
-                ...newHistory[newHistory.length - 1],
-                black: sanMove,
-              };
-            } else {
-              newHistory.push({ number: 1, white: null, black: sanMove });
-            }
-          }
-          moveHistoryRef.current = newHistory;
-          return newHistory;
-        });
-        setLastMove(sanMove);
-      }
-      return true;
-    }
-
-    return false;
-  }
-
-  function executeMoveResolution(move) {
-    try {
-      resolveAndAnimateMove(move, game.fen());
-    } catch (e) {
-      console.error(e);
-    }
+    audio.play('click');
+    commit();
+    return true;
   }
 
   function makeAMove(move) {
     if (isAnimatingMove) return false;
 
-    try {
-      const currentGame = new Chess(game.fen());
-      const moves = currentGame.moves({ verbose: true });
-      const isLegal = moves.some((m) => m.from === move.from && m.to === move.to);
-      if (!isLegal) return false;
+    const legal = game.moves({ verbose: true }).find((m) => m.from === move.from && m.to === move.to);
+    if (!legal) return false;
 
-      const pieceOnSquare = currentGame.get(move.from);
-      if (pieceOnSquare && pieceOnSquare.type === 'p') {
-        const isWhitePromotion = pieceOnSquare.color === 'w' && move.to[1] === '8';
-        const isBlackPromotion = pieceOnSquare.color === 'b' && move.to[1] === '1';
-
-        if (isWhitePromotion || isBlackPromotion) {
-          if (!move.promotion) {
-            setPendingPromotion({ from: move.from, to: move.to });
-            return true;
-          }
-        }
-      }
-
-      return resolveAndAnimateMove(move, game.fen());
-    } catch (error) {
-      return false;
+    // Promotion move without a chosen piece → ask the player first.
+    if (legal.promotion && !move.promotion) {
+      setPendingPromotion({ from: move.from, to: move.to });
+      return true;
     }
+
+    return resolveAndAnimateMove(move);
   }
 
-  function makeBotMove() {
-    if (isAnimatingMove || game.isGameOver() || pendingPromotion) return;
-
-    const possibleMoves = game.moves({ verbose: true });
-    if (possibleMoves.length === 0) return;
-
-    let selectedMove;
-
-    if (difficulty === 'easy') {
-      const randomIndex = Math.floor(Math.random() * possibleMoves.length);
-      selectedMove = possibleMoves[randomIndex];
-    } else if (difficulty === 'medium') {
-      const captures = possibleMoves.filter((m) => m.captured);
-      if (captures.length > 0) {
-        selectedMove = captures[Math.floor(Math.random() * captures.length)];
-      } else {
-        selectedMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-      }
-    } else if (difficulty === 'hard') {
-      const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-      let bestMove = possibleMoves[0];
-      let highestValue = -1;
-
-      possibleMoves.forEach((m) => {
-        let value = 0;
-        if (m.captured) value += pieceValues[m.captured] * 10;
-        if (m.san.includes('+')) value += 2;
-
-        if (value > highestValue) {
-          highestValue = value;
-          bestMove = m;
-        }
-      });
-      selectedMove = bestMove;
-    }
-
-    if (selectedMove) {
-      makeAMove({
-        from: selectedMove.from,
-        to: selectedMove.to,
-        promotion: 'q',
-      });
-    }
+  function handlePromotionSelection(chosenPiece) {
+    if (!pendingPromotion) return;
+    const { from, to } = pendingPromotion;
+    setPendingPromotion(null);
+    resolveAndAnimateMove({ from, to, promotion: chosenPiece });
   }
 
+  // ── CPU OPPONENT ──
+  // The search runs in a Web Worker (see src/bot), so the UI stays smooth
+  // even while HARD is thinking. Pausing, undoing or restarting cancels it.
   useEffect(() => {
-    if (
-      gameStarted &&
-      gameMode === 'bot' &&
-      game.turn() === 'b' &&
-      !game.isGameOver() &&
-      !isAnimatingMove &&
-      !pendingPromotion
-    ) {
-      const aiTimeout = setTimeout(() => {
-        if (game.turn() === 'b' && !game.isGameOver()) {
-          makeBotMove();
-        }
-      }, 700);
-      return () => clearTimeout(aiTimeout);
-    }
-  }, [game, gameMode, gameStarted, isAnimatingMove, pendingPromotion]);
+    const botToMove = gameStarted && gameMode === 'bot' && game.turn() === 'b' && !isGameOver
+      && !isStarting && !activeModal && !pendingPromotion && !isAnimatingMove;
+    if (!botToMove) return;
 
-  function onDrop(sourceSquare, targetSquare) {
-    if (
-      game.isGameOver() ||
-      (gameMode === 'bot' && game.turn() === 'b') ||
-      !gameStarted ||
-      isAnimatingMove ||
-      pendingPromotion
-    ) {
-      return false;
-    }
-
-    const move = makeAMove({
-      from: sourceSquare,
-      to: targetSquare,
+    let cancelled = false;
+    setBotThinking(true);
+    Promise.all([
+      requestBotMove(game.fen(), difficulty),
+      new Promise((resolve) => setTimeout(resolve, BOT_MIN_THINK_MS)),
+    ]).then(([move]) => {
+      if (cancelled) return;
+      setBotThinking(false);
+      if (move) makeAMove(move);
     });
 
-    return !!move;
+    return () => {
+      cancelled = true;
+      setBotThinking(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- makeAMove reads the same `game` listed here
+  }, [game, gameMode, difficulty, gameStarted, isGameOver, isStarting, activeModal, pendingPromotion, isAnimatingMove]);
+
+  function onDrop(sourceSquare, targetSquare) {
+    if (!gameStarted || isGameOver || isAnimatingMove || pendingPromotion || activeModal
+      || (gameMode === 'bot' && game.turn() === 'b')) {
+      return false;
+    }
+    return makeAMove({ from: sourceSquare, to: targetSquare });
   }
 
-  function isBotTurnFen(fen) {
-    return gameMode === 'bot' && new Chess(fen).turn() === 'b';
-  }
+  // Stable identities for the memoized board (see GameBoardScreen).
+  const onDropRef = useRef(onDrop);
+  onDropRef.current = onDrop;
+  const stableOnDrop = useCallback((from, to) => onDropRef.current(from, to), []);
+  const isDraggablePiece = useCallback(
+    ({ piece }) => piece[0] === sideToMove && (gameMode !== 'bot' || sideToMove === 'w'),
+    [sideToMove, gameMode]
+  );
 
-  function restoreToFen(fen, newHistory, newFuture) {
-    if (timerRef.current) clearInterval(timerRef.current);
-    const restored = new Chess(fen);
+  // ── UNDO / REDO ──
+  // In a bot match, steps back/forward past the CPU's reply so it's the
+  // player's turn again.
+  function restoreSnapshot(target, newHistory, newFuture) {
+    moveTokenRef.current++;
+    clearAnimations();
     setHistory(newHistory);
     setFuture(newFuture);
     setHiddenSquare(null);
     setIsAnimatingMove(false);
     setPendingPromotion(null);
-    setGame(restored);
-    updateStatus(restored);
-    if (!restored.isGameOver()) {
-      setActiveModal(null);
-    }
+    setGame(target);
+    updateStatus(target);
+    if (!target.isGameOver()) setActiveModal(null);
     audio.play('click');
-
-    // ── RECONSTRUCT NOTATION FROM FEN HISTORY ──
-    // When restoring via undo/redo, we need to rebuild the move history
-    // up to this point. We do this by replaying all moves from start.
-    const allFens = [...newHistory, fen];
-    const reconstructedMoves = [];
-    let tempGame = new Chess();
-    
-    for (let i = 1; i < allFens.length; i++) {
-      const prevFen = allFens[i - 1];
-      const currFen = allFens[i];
-      const prev = new Chess(prevFen);
-      const curr = new Chess(currFen);
-      
-      // Find the move that transforms prevFen to currFen
-      const possibleMoves = prev.moves({ verbose: true });
-      for (const m of possibleMoves) {
-        const test = new Chess(prevFen);
-        test.move(m);
-        if (test.fen() === currFen) {
-          const san = m.san;
-          if (m.color === 'w') {
-            reconstructedMoves.push({ number: Math.floor(reconstructedMoves.length) + 1, white: san, black: null });
-          } else {
-            if (reconstructedMoves.length > 0) {
-              reconstructedMoves[reconstructedMoves.length - 1] = {
-                ...reconstructedMoves[reconstructedMoves.length - 1],
-                black: san,
-              };
-            }
-          }
-          break;
-        }
-      }
-    }
-    
-    setMoveHistory(reconstructedMoves);
-    moveHistoryRef.current = reconstructedMoves;
-    setLastMove(reconstructedMoves.length > 0 
-      ? (reconstructedMoves[reconstructedMoves.length - 1].black || reconstructedMoves[reconstructedMoves.length - 1].white)
-      : null
-    );
   }
 
+  const isBotTurn = (g) => gameMode === 'bot' && g.turn() === 'b';
+
   function undoMove() {
-    if (history.length === 0 || isAnimatingMove || pendingPromotion || isStarting) return;
-
+    if (!canUndo) return;
     const pastStack = [...history];
-    const futureStack = [...future];
-    futureStack.push(game.fen());
-
+    const futureStack = [...future, game];
     let target = pastStack.pop();
-    while (pastStack.length > 0 && isBotTurnFen(target)) {
+    while (pastStack.length > 0 && isBotTurn(target)) {
       futureStack.push(target);
       target = pastStack.pop();
     }
-
-    restoreToFen(target, pastStack, futureStack);
+    restoreSnapshot(target, pastStack, futureStack);
   }
 
   function redoMove() {
-    if (future.length === 0 || isAnimatingMove || pendingPromotion || isStarting) return;
-
-    const pastStack = [...history];
+    if (!canRedo) return;
+    const pastStack = [...history, game];
     const futureStack = [...future];
-    pastStack.push(game.fen());
-
     let target = futureStack.pop();
-    while (futureStack.length > 0 && isBotTurnFen(target)) {
+    while (futureStack.length > 0 && isBotTurn(target)) {
       pastStack.push(target);
       target = futureStack.pop();
     }
-
-    restoreToFen(target, pastStack, futureStack);
+    restoreSnapshot(target, pastStack, futureStack);
   }
 
-  const canUndo = history.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting;
-  const canRedo = future.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting;
+  // A time-out can't be undone (the clock would be stuck at 0:00).
+  const canUndo = history.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
+  const canRedo = future.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
+
+  // ── BOARD RESET + 3-2-1 COUNTDOWN (shared by START and REPLAY) ──
+  function resetBoard() {
+    moveTokenRef.current++;
+    clearAnimations();
+    setGame(new Chess());
+    setGameStatus('RED TURN');
+    setTimeoutLoser(null);
+    setKingCheckedAlert(false);
+    setHiddenSquare(null);
+    setIsAnimatingMove(false);
+    setPendingPromotion(null);
+    setHistory([]);
+    setFuture([]);
+    if (timeMode && timeMode !== 'none') {
+      const seconds = parseFloat(timeMode) * 60;
+      setWhiteTime(seconds);
+      setBlackTime(seconds);
+    }
+  }
 
   function runProceduralCountdown(onDone) {
+    if (isStarting) return; // ignore double taps on START / REPLAY
+    countdownTimersRef.current.forEach(clearTimeout);
     setIsStarting(true);
     setCountdownValue(3);
-
-    const tick3 = setTimeout(() => setCountdownValue(2), 1000);
-    const tick2 = setTimeout(() => setCountdownValue(1), 2000);
-    const tick1 = setTimeout(() => {
-      const newGame = new Chess();
-      setGame(newGame);
-      setGameStatus('RED TURN');
-      setKingCheckedAlert(false);
-      setHiddenSquare(null);
-      setIsAnimatingMove(false);
-      setPendingPromotion(null);
-      setHistory([]);
-      setFuture([]);
-      setMoveHistory([]);
-      moveHistoryRef.current = [];
-      setLastMove(null);
-
-      if (timeMode !== 'none') {
-        const seconds = parseFloat(timeMode) * 60;
-        setWhiteTime(seconds);
-        setBlackTime(seconds);
-      }
-
-      setIsStarting(false);
-      onDone && onDone();
-    }, 3000);
-
-    return () => {
-      clearTimeout(tick3);
-      clearTimeout(tick2);
-      clearTimeout(tick1);
-    };
+    countdownTimersRef.current = [
+      setTimeout(() => setCountdownValue(2), 1000),
+      setTimeout(() => setCountdownValue(1), 2000),
+      setTimeout(() => {
+        resetBoard();
+        setIsStarting(false);
+        if (onDone) onDone();
+      }, 3000),
+    ];
   }
 
   function restartMatch() {
     audio.triggerInteractiveAudioContext();
     audio.play('success');
-
-    if (timerRef.current) clearInterval(timerRef.current);
     setActiveModal(null);
     runProceduralCountdown();
   }
@@ -648,49 +561,20 @@ export function useChessGame({ audio, setActiveModal }) {
     if (!gameMode || (gameMode === 'bot' && !difficulty) || !timeMode) return;
     audio.triggerInteractiveAudioContext();
     audio.play('success');
-
     runProceduralCountdown(() => setGameStarted(true));
   }
 
   function quitMatch() {
-    if (timerRef.current) clearInterval(timerRef.current);
-    localStorage.removeItem('neochess_active_session');
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // ignore blocked storage
+    }
+    resetBoard();
     setGameMode(null);
     setDifficulty(null);
     setTimeMode(null);
     setGameStarted(false);
-    setGame(new Chess());
-    setGameStatus('RED TURN');
-    setKingCheckedAlert(false);
-    setHiddenSquare(null);
-    setIsAnimatingMove(false);
-    setPendingPromotion(null);
-    setHistory([]);
-    setFuture([]);
-    setMoveHistory([]);
-    moveHistoryRef.current = [];
-    setLastMove(null);
-  }
-
-  function loadMatchState(match) {
-    const loadedGame = new Chess(match.fen);
-    setGame(loadedGame);
-    setGameMode(match.gameMode);
-    setDifficulty(match.difficulty);
-    setTimeMode(match.timeMode);
-    setGameStatus(match.gameStatus);
-    setWhiteTime(match.whiteTime);
-    setBlackTime(match.blackTime);
-    setKingCheckedAlert(loadedGame.inCheck());
-    setHiddenSquare(null);
-    setIsAnimatingMove(false);
-    setPendingPromotion(null);
-    setHistory([]);
-    setFuture([]);
-    setMoveHistory([]);
-    moveHistoryRef.current = [];
-    setLastMove(null);
-    setGameStarted(true);
   }
 
   const customSquareStyles = useMemo(() => {
@@ -713,6 +597,9 @@ export function useChessGame({ audio, setActiveModal }) {
     countdownValue,
     game,
     gameStatus,
+    isGameOver,
+    timeoutLoser,
+    botThinking,
     whiteTime,
     blackTime,
     kingCheckedAlert,
@@ -727,7 +614,8 @@ export function useChessGame({ audio, setActiveModal }) {
     canRedo,
     undoMove,
     redoMove,
-    onDrop,
+    onDrop: stableOnDrop,
+    isDraggablePiece,
     handlePromotionSelection,
     startGame,
     restartMatch,

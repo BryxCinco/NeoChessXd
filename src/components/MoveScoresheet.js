@@ -1,7 +1,9 @@
 // src/components/MoveScoresheet.js — PURE JS, NO JSX
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 
-export function MoveScoresheet({ moveHistory, lastMove, gameStatus, isCompactLayout }) {
+// memo: the clock re-renders the board screen every tick; the scoresheet
+// only needs to update when a move is made.
+export const MoveScoresheet = memo(function MoveScoresheet({ moveHistory, lastMove, gameStatus, isCompactLayout }) {
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -10,7 +12,7 @@ export function MoveScoresheet({ moveHistory, lastMove, gameStatus, isCompactLay
     }
   }, [moveHistory, lastMove]);
 
-  const isGameOver = gameStatus.includes('WINNER') || gameStatus.includes('DRAWN') || gameStatus.includes('GAME OVER');
+  const isGameOver = gameStatus.includes('WINNER') || gameStatus.includes('DRAW') || gameStatus.includes('GAME OVER');
 
   const containerStyle = {
     margin: isCompactLayout ? '12px 8px 16px' : '0',
@@ -142,4 +144,4 @@ export function MoveScoresheet({ moveHistory, lastMove, gameStatus, isCompactLay
       resultContent
     )
   );
-}
+});

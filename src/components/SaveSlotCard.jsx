@@ -8,7 +8,7 @@ export function SaveSlotCard({ match, onResume, onDelete }) {
     <div className="save-data-card" onClick={() => onResume(match)}>
       <div className="card-top">
         <span className="save-mode-badge">
-          {match.gameMode === 'bot' ? `CPU (${match.difficulty.toUpperCase()})` : '1VS1'}
+          {match.gameMode === 'bot' ? `CPU (${(match.difficulty || '').toUpperCase()})` : '1VS1'}
         </span>
         <span className="save-time-badge">TIME: {match.timeMode === 'none' ? 'INF' : `${match.timeMode}M`}</span>
       </div>

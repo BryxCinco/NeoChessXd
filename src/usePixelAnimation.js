@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 
 export function usePixelAnimation() {
   const canvasRef = useRef(null);
@@ -223,8 +223,10 @@ export function usePixelAnimation() {
         life: 75
       });
     } else if (type === 'cage') {
-      // Ginawang mas matagal ang duration (o permanenteng naka-display habang active) para permanenteng makulong ang hari
-      duration = 999999;
+      // Bumabagsak ang kulungan at tumatama ang alikabok sa loob ng ~45 frames;
+      // pagkatapos noon ay "frozen" na lang ito (nakadrawing pa rin, pero
+      // humihinto na ang render loop para hindi maubos ang battery sa phone).
+      duration = 45;
       particles.push({
         type: 'cage_iron',
         x: x,
@@ -653,7 +655,6 @@ export function usePixelAnimation() {
         let reticle = anim.particles.find(p => p.type === 'reticle');
         if (reticle) {
           reticle.life--;
-          const frame = anim.currentFrame;
 
           if (reticle.currentRadius > reticle.targetRadius) {
             reticle.currentRadius -= (reticle.currentRadius - reticle.targetRadius) * 0.15;
@@ -1053,9 +1054,15 @@ export function usePixelAnimation() {
         anim.particles = anim.particles.filter(p => p.life > 0);
       }
 
-      // Para sa kulungan, hahayaan nating mag-stay ang animation nang tuloy-tuloy habang hindi pa natatapos ang lifecycle ng cage
-      if (anim.type === 'cage' || anim.currentFrame < anim.maxFrames) {
+      if (anim.currentFrame < anim.maxFrames) {
         activeAnimations.push(anim);
+      } else if (anim.type === 'cage') {
+        // Mananatiling nakadrawing ang kulungan hanggang clearAnimations()
+        activeAnimations.push(anim);
+        if (!anim.frozen) {
+          anim.frozen = true;
+          if (anim.onComplete) anim.onComplete();
+        }
       } else {
         anim.particles = []; 
         if (anim.onComplete) {
@@ -1066,14 +1073,28 @@ export function usePixelAnimation() {
 
     animationsRef.current = activeAnimations;
 
-    if (animationsRef.current.length > 0) {
+    if (activeAnimations.some((a) => !a.frozen)) {
       animationFrameRef.current = requestAnimationFrame(updateAndRender);
     } else {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Frozen animations (the cage) were already drawn this frame and stay
+      // on the canvas, so the loop can stop without clearing them.
+      if (activeAnimations.length === 0) ctx.clearRect(0, 0, canvas.width, canvas.height);
       animationFrameRef.current = null;
     }
   }
 
-  // I-expose din ang triggerKingCageAnimation kasama ng canvasRef at triggerCaptureAnimation
-  return { canvasRef, triggerCaptureAnimation, triggerKingCageAnimation };
+  // Wipes every effect (including a frozen cage) — used on restart / quit.
+  const clearAnimations = useCallback(() => {
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
+    animationsRef.current = [];
+    const canvas = canvasRef.current;
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  useEffect(() => () => {
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+  }, []);
+
+  return { canvasRef, triggerCaptureAnimation, triggerKingCageAnimation, clearAnimations };
 }

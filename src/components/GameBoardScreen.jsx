@@ -1,4 +1,4 @@
-import React from 'react';
+import { useMemo } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { pixelPieces } from '../pixelPieces';
 import { MoveScoresheet } from './MoveScoresheet';
@@ -17,6 +17,8 @@ export function GameBoardScreen({
   boardWidth,
   game,
   onDrop,
+  isDraggablePiece,
+  botThinking,
   customSquareStyles,
   gameStatus,
   gameMode,
@@ -28,6 +30,26 @@ export function GameBoardScreen({
   lastMove,
   isCompactLayout,
 }) {
+  // The clock re-renders this screen several times a second; memoizing the
+  // board means react-chessboard (64 squares + 32 SVG pieces) only
+  // re-renders when the position, size or hidden square actually changes —
+  // the single biggest smoothness win on phones. `onDrop` and
+  // `isDraggablePiece` come from useChessGame with stable identities.
+  const fen = game.fen();
+  const board = useMemo(() => (
+    <Chessboard
+      boardWidth={boardWidth}
+      position={fen}
+      onPieceDrop={onDrop}
+      isDraggablePiece={isDraggablePiece}
+      customPieces={pixelPieces}
+      customSquareStyles={customSquareStyles}
+      customBoardStyle={BOARD_STYLE}
+      customDarkSquareStyle={DARK_SQUARE_STYLE}
+      customLightSquareStyle={LIGHT_SQUARE_STYLE}
+    />
+  ), [boardWidth, fen, onDrop, isDraggablePiece, customSquareStyles]);
+
   return (
     <div className="game-grid-pixel">
       <div className="bento-pixel board-frame" ref={boardWrapperRef} style={{ position: 'relative' }}>
@@ -44,24 +66,14 @@ export function GameBoardScreen({
           }}
         />
         <main className="board-container-pixel" ref={boardInnerRef}>
-          {/* 📍 STEP 3: Dito in-inject ang boardWidth prop sa Chessboard */}
-          <Chessboard
-            boardWidth={boardWidth}
-            position={game.fen()}
-            onPieceDrop={onDrop}
-            customPieces={pixelPieces}
-            customSquareStyles={customSquareStyles}
-            customBoardStyle={BOARD_STYLE}
-            customDarkSquareStyle={DARK_SQUARE_STYLE}
-            customLightSquareStyle={LIGHT_SQUARE_STYLE}
-          />
+          {board}
         </main>
       </div>
 
       <div className="side-pixel-wrapper">
         <div className="bento-pixel monitor-panel">
           <div className="monitor-title">SYSTEM STATUS</div>
-          <div className="monitor-badge blinking-text">{gameStatus}</div>
+          <div className="monitor-badge blinking-text">{botThinking ? 'CPU THINKING...' : gameStatus}</div>
           <div className="stage-info">STAGE: {gameMode === 'bot' ? 'WORLD CPU BOT' : 'WORLD 1v1 LOCAL'}</div>
         </div>
 

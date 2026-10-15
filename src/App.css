@@ -1193,3 +1193,34 @@ button {
     max-height: 260px;
   }
 }
+/* ── PIXEL PIECE IDLE ANIMATIONS ──
+   steps() keeps the chunky 8-bit feel AND means the browser repaints the
+   32 SVG pieces only a few times per cycle instead of every frame — a big
+   win on phones. */
+@keyframes pixel-idle {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-1px) scaleY(1.05); }
+}
+@keyframes eye-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+.pixel-piece {
+  transform-origin: bottom center;
+  animation: pixel-idle 1.2s steps(2, jump-none) infinite;
+}
+.pixel-eye {
+  transform-origin: center;
+  animation: eye-blink 4s steps(1, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pixel-piece, .pixel-eye, .blinking-text, .screen-flash-overlay, .flash-alert-text {
+    animation: none;
+  }
+}
+
+/* Native double-tap-zoom suppression (replaces the old JS touchend blocker,
+   which could swallow fast taps on buttons). */
+html, body {
+  touch-action: manipulation;
+}

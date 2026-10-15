@@ -24,19 +24,12 @@ export function useResponsiveLayout() {
     };
   }, []);
 
-  // ── MOBILE ZOOM LOCK ──
+  // ── MOBILE PINCH-ZOOM LOCK ──
+  // The viewport meta lives in index.html and double-tap zoom is handled by
+  // `touch-action: manipulation` in App.css (a JS touchend blocker could
+  // swallow fast taps on buttons). iOS Safari ignores both for pinch, so
+  // pinch / gesture events are still blocked here.
   useEffect(() => {
-    let viewportMeta = document.querySelector('meta[name="viewport"]');
-    if (!viewportMeta) {
-      viewportMeta = document.createElement('meta');
-      viewportMeta.setAttribute('name', 'viewport');
-      document.head.appendChild(viewportMeta);
-    }
-    viewportMeta.setAttribute(
-      'content',
-      'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
-    );
-
     const blockPinch = (e) => {
       if (e.touches && e.touches.length > 1) {
         e.preventDefault();
@@ -47,25 +40,14 @@ export function useResponsiveLayout() {
       e.preventDefault();
     };
 
-    let lastTouchEnd = 0;
-    const blockDoubleTapZoom = (e) => {
-      const now = Date.now();
-      if (now - lastTouchEnd <= 300) {
-        e.preventDefault();
-      }
-      lastTouchEnd = now;
-    };
-
     document.addEventListener('touchmove', blockPinch, { passive: false });
     document.addEventListener('gesturestart', blockGesture, { passive: false });
     document.addEventListener('gesturechange', blockGesture, { passive: false });
-    document.addEventListener('touchend', blockDoubleTapZoom, { passive: false });
 
     return () => {
       document.removeEventListener('touchmove', blockPinch);
       document.removeEventListener('gesturestart', blockGesture);
       document.removeEventListener('gesturechange', blockGesture);
-      document.removeEventListener('touchend', blockDoubleTapZoom);
     };
   }, []);
 
