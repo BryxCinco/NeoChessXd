@@ -1,4 +1,4 @@
-import React from 'react';
+import { PieceSprite } from '../pixelPieces';
 
 // Renders whichever modal body matches `activeModal`. All the pause-menu
 // actions live here so App.jsx just wires up the handful of callbacks.
@@ -17,6 +17,8 @@ export function GameModals({
 }) {
   if (!activeModal) return null;
   const disabled = isAnimatingMove || pendingPromotion;
+  // 'w' / 'b' when someone won (checkmate or time-out), null for a draw.
+  const winnerColor = /WINNER: RED/.test(gameStatus) ? 'w' : /WINNER: BLUE/.test(gameStatus) ? 'b' : null;
 
   return (
     <div className="retro-modal-overlay">
@@ -80,6 +82,17 @@ export function GameModals({
         {activeModal === 'game_over' && (
           <>
             <h2 className="modal-title-pixel winner-title">[GAME OVER]</h2>
+            <div className="game-over-hero">
+              {winnerColor ? (
+                <PieceSprite code={`${winnerColor}K`} size={80} animated />
+              ) : (
+                <>
+                  <PieceSprite code="wK" size={60} animated />
+                  <span className="vs-text">=</span>
+                  <PieceSprite code="bK" size={60} animated />
+                </>
+              )}
+            </div>
             <p className="modal-text-pixel">{gameStatus}</p>
             <div className="btn-group-pixel">
               <button className="pixel-action-btn game-over-btn-replay" onClick={onRestart}>

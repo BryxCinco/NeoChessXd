@@ -1224,3 +1224,361 @@ button {
 html, body {
   touch-action: manipulation;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   GAME SCREEN v2 — opponent bar / board / your bar, sidebar on desktop,
+   single column on phones & tablets. Everything below overrides the
+   older game-screen rules above.
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  /* Board edge length: as big as the viewport allows, leaving room for
+     the top controls and the two player bars. */
+  --board-max: min(640px, calc(100dvh - 300px));
+  --red: #e8282b;
+  --blue: #2f7bff;
+  --gold: #ffd83a;
+}
+
+.game-grid-pixel {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.board-column {
+  flex: 0 1 calc(var(--board-max) + 20px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board-frame {
+  position: relative;
+  padding: 10px;
+  background: #0d0f14;
+}
+
+.board-container-pixel {
+  width: 100%;
+  max-width: var(--board-max);
+}
+
+.fx-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.side-pixel-wrapper {
+  flex: 0 0 320px;
+  width: 320px;
+}
+
+/* ── PLAYER BARS ── */
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #11141b;
+  border: 4px solid #2a2f3a;
+  box-shadow: 4px 4px 0 #000;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+.player-bar-w.is-active { border-color: var(--red); box-shadow: 4px 4px 0 #000, 0 0 0 2px rgba(232, 40, 43, 0.35); }
+.player-bar-b.is-active { border-color: var(--blue); box-shadow: 4px 4px 0 #000, 0 0 0 2px rgba(47, 123, 255, 0.35); }
+
+.player-bar-avatar {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1d222c;
+  border: 3px solid #000;
+}
+.player-bar-w .player-bar-avatar { background: #3a1416; }
+.player-bar-b .player-bar-avatar { background: #12224a; }
+
+.player-bar-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-bar-name {
+  font-size: 0.6rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-bar-w .player-bar-name { color: #ff6b6d; }
+.player-bar-b .player-bar-name { color: #6fa8ff; }
+
+.player-bar-thinking {
+  margin-left: 8px;
+  font-size: 0.45rem;
+  color: var(--gold);
+  animation: blinkPixel 0.8s infinite steps(2, start);
+}
+
+.captured-tray {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-height: 20px;
+  overflow: hidden;
+}
+
+.captured-piece {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+/* Same-type captures overlap like a stack of coins. */
+.captured-piece.is-stacked { margin-left: -11px; }
+.captured-piece + .captured-piece:not(.is-stacked) { margin-left: 2px; }
+
+.captured-empty {
+  font-size: 0.45rem;
+  color: #4b5263;
+  letter-spacing: 1px;
+}
+
+.material-lead {
+  margin-left: 6px;
+  font-size: 0.55rem;
+  color: #4ade80;
+}
+
+.player-bar-clock {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  padding: 8px 10px;
+  background: #000;
+  color: #6b7280;
+  border: 3px solid #2a2f3a;
+  letter-spacing: 1px;
+  min-width: 74px;
+  text-align: center;
+}
+.player-bar-w .player-bar-clock.is-running { color: #fff; background: #5c1013; border-color: var(--red); }
+.player-bar-b .player-bar-clock.is-running { color: #fff; background: #0f2a66; border-color: var(--blue); }
+.player-bar-clock.is-low { color: #ff4d4f !important; }
+.player-bar-clock.is-low.is-running { animation: blinkPixel 0.5s infinite steps(2, start); }
+
+/* ── CHECKMATE BANNER + BOARD SHAKE ── */
+.checkmate-banner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  display: flex;
+  gap: 0.5em;
+  padding: 14px 18px;
+  background: #000;
+  border: 4px solid var(--gold);
+  box-shadow: 6px 6px 0 #000, 0 0 0 4px #000;
+  color: var(--gold);
+  font-size: clamp(1rem, 5vw, 1.8rem);
+  text-shadow: 3px 3px 0 var(--red);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: bannerPop 0.5s steps(4, end) both;
+}
+.checkmate-banner span:last-child { color: #fff; }
+
+@keyframes bannerPop {
+  0% { transform: translate(-50%, -50%) scale(0.2); }
+  70% { transform: translate(-50%, -50%) scale(1.15); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+.board-shake { animation: boardShake 0.4s steps(6, end) 0.35s 1; }
+@keyframes boardShake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+
+/* ── PROMOTION PICKER ── */
+.promo-modal { max-width: 520px; }
+.promo-modal-w { border-color: var(--red) !important; }
+.promo-modal-b { border-color: var(--blue) !important; }
+.promo-title { color: var(--gold) !important; margin-bottom: 8px; }
+.promo-subtitle { margin-bottom: 16px; font-size: 0.6rem; color: #9ca3af; }
+
+.promo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.promo-btn {
+  padding: 10px 4px 12px;
+  gap: 8px;
+  background: #e8cfa6;
+  color: #120a1a;
+}
+.promo-btn:nth-child(even) { background: #2e2017; color: #fff; }
+.promo-btn:hover, .promo-btn:focus-visible {
+  background: var(--gold) !important;
+  color: #120a1a !important;
+  outline: none;
+}
+.promo-label { font-size: 0.5rem; letter-spacing: 1px; }
+
+.promo-cancel-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 12px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  color: #fff;
+  background: #3e4249;
+  border: 4px solid #000;
+  box-shadow: 3px 3px 0 #000;
+  cursor: pointer;
+}
+.promo-cancel-btn:active { transform: translate(3px, 3px); box-shadow: none; }
+
+/* Eyes blink around their own centre inside the SVG. */
+.pixel-eye { transform-box: fill-box; }
+
+/* ── PHONES & TABLETS ── */
+@media (max-width: 1024px) {
+  :root { --board-max: min(100%, 640px); }
+
+  .game-grid-pixel {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .board-column {
+    flex: none;
+    width: 100%;
+    max-width: 660px;
+    gap: 8px;
+  }
+
+  .board-frame { padding: 6px; }
+
+  .side-pixel-wrapper {
+    flex: none;
+    width: 100%;
+    max-width: 660px;
+  }
+}
+
+@media (max-width: 480px) {
+  .player-bar { padding: 6px 8px; gap: 8px; min-height: 46px; border-width: 3px; }
+  .player-bar-avatar { width: 34px; height: 34px; }
+  .player-bar-avatar svg { width: 28px; height: 28px; }
+  .player-bar-name { font-size: 0.5rem; }
+  .captured-piece svg { width: 16px; height: 16px; }
+  .captured-piece.is-stacked { margin-left: -9px; }
+  .player-bar-clock { font-size: 0.7rem; padding: 6px 6px; min-width: 60px; }
+
+  .promo-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Landscape phones: board sized by height, sidebar beside it. */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --board-max: calc(100dvh - 150px); }
+  .game-grid-pixel { flex-direction: row; align-items: flex-start; }
+  .board-column { flex: 0 0 auto; width: calc(var(--board-max) + 12px); }
+  .side-pixel-wrapper { flex: 1 1 200px; max-height: calc(100dvh - 90px); overflow-y: auto; }
+  .board-container-pixel { height: auto; width: 100%; max-width: var(--board-max); }
+  .promo-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-shake, .checkmate-banner, .player-bar-thinking, .player-bar-clock.is-low.is-running { animation: none; }
+  .checkmate-banner { transform: translate(-50%, -50%); }
+}
+
+.game-screen-wrap {
+  width: 100%;
+  padding-top: 76px;
+  box-sizing: border-box;
+}
+@media (max-width: 480px) {
+  .game-screen-wrap { padding-top: 64px; }
+}
+.board-frame { padding: 12px; }
+@media (max-width: 1024px) { .board-frame { padding: 9px; } }
+
+/* ── MENU HEADER: RED ARMY VS BLUE ARMY ── */
+.header-vs {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 14px;
+  margin: 4px 0 10px;
+}
+.header-army {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+.vs-text {
+  font-size: 1rem;
+  color: var(--gold);
+  text-shadow: 3px 3px 0 #000;
+  padding-bottom: 10px;
+  animation: blinkPixel 1.2s infinite steps(2, start);
+}
+@media (max-width: 480px) {
+  .header-army-extra { display: none; }
+  .header-vs { margin: 2px 0 6px; }
+}
+
+/* ── GAME OVER HERO ── */
+.game-over-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  margin: -4px 0 8px;
+}
+.game-over-hero .vs-text { animation: none; }
+
+/* Landscape phones (v2): board on the left at full height, player bars
+   stacked beside it (opponent top, you bottom), sidebar after that. */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --board-max: calc(100dvh - 90px); }
+  .game-screen-wrap { padding-top: 52px; }
+  .top-controls-row { top: 6px !important; }
+  .top-controls-row .top-menu-trigger-btn { padding: 4px 10px !important; font-size: 0.9rem !important; }
+  .top-controls-row .pixel-title-mini { font-size: 0.75rem !important; }
+
+  .game-grid-pixel { flex-direction: row; align-items: stretch; gap: 10px; }
+  .board-column {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+    display: grid;
+    grid-template-columns: calc(var(--board-max) + 18px) minmax(170px, 1fr);
+    grid-template-rows: auto 1fr auto;
+    gap: 8px 10px;
+  }
+  .board-column > .board-frame { grid-column: 1; grid-row: 1 / span 3; padding: 9px; }
+  .board-column > .player-bar-b { grid-column: 2; grid-row: 1; }
+  .board-column > .player-bar-w { grid-column: 2; grid-row: 3; }
+  .player-bar { flex-wrap: wrap; }
+  .side-pixel-wrapper { flex: 0 1 240px; width: auto; max-height: calc(100dvh - 60px); }
+}

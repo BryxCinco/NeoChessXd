@@ -2,13 +2,16 @@ import { useMemo } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { pixelPieces } from '../pixelPieces';
 import { MoveScoresheet } from './MoveScoresheet';
+import { PlayerBar } from './PlayerBar';
 
+// Gold frame drawn with box-shadow (not border) so it never adds to the
+// measured board width and pushes the h-file off narrow screens.
 const BOARD_STYLE = {
-  border: '6px solid #ffcc00',
-  boxShadow: '0 0 0 6px #000, 0 15px 0 rgba(0,0,0,0.4)',
+  boxShadow: '0 0 0 5px #ffcc00',
 };
 const DARK_SQUARE_STYLE = { backgroundColor: '#2e2017' };
 const LIGHT_SQUARE_STYLE = { backgroundColor: '#e8cfa6' };
+const LOW_TIME_SECONDS = 20;
 
 export function GameBoardScreen({
   boardWrapperRef,
@@ -17,8 +20,12 @@ export function GameBoardScreen({
   boardWidth,
   game,
   onDrop,
+  onSquareClick,
+  onPieceDragBegin,
   isDraggablePiece,
   botThinking,
+  checkmateFx,
+  captured,
   customSquareStyles,
   gameStatus,
   gameMode,
@@ -29,69 +36,82 @@ export function GameBoardScreen({
   moveHistory,
   lastMove,
   isCompactLayout,
+  isGameOver,
 }) {
   // The clock re-renders this screen several times a second; memoizing the
   // board means react-chessboard (64 squares + 32 SVG pieces) only
-  // re-renders when the position, size or hidden square actually changes —
-  // the single biggest smoothness win on phones. `onDrop` and
-  // `isDraggablePiece` come from useChessGame with stable identities.
+  // re-renders when the position, size or square highlights actually
+  // change — the single biggest smoothness win on phones. All handlers come
+  // from useChessGame with stable identities.
   const fen = game.fen();
   const board = useMemo(() => (
     <Chessboard
       boardWidth={boardWidth}
       position={fen}
       onPieceDrop={onDrop}
+      onSquareClick={onSquareClick}
+      onPieceDragBegin={onPieceDragBegin}
       isDraggablePiece={isDraggablePiece}
       customPieces={pixelPieces}
       customSquareStyles={customSquareStyles}
       customBoardStyle={BOARD_STYLE}
       customDarkSquareStyle={DARK_SQUARE_STYLE}
       customLightSquareStyle={LIGHT_SQUARE_STYLE}
+      animationDuration={180}
     />
-  ), [boardWidth, fen, onDrop, isDraggablePiece, customSquareStyles]);
+  ), [boardWidth, fen, onDrop, onSquareClick, onPieceDragBegin, isDraggablePiece, customSquareStyles]);
+
+  const turn = game.turn();
+  const timed = timeMode !== 'none';
+  const playerBar = (color) => {
+    const time = color === 'w' ? whiteTime : blackTime;
+    const isCpu = color === 'b' && gameMode === 'bot';
+    return (
+      <PlayerBar
+        color={color}
+        label={color === 'w' ? 'P1 RED' + (gameMode === 'bot' ? ' (YOU)' : '') : 'P2 BLUE' + (isCpu ? ' (CPU)' : '')}
+        isActive={!isGameOver && turn === color}
+        isThinking={isCpu && botThinking}
+        capturedTypes={captured[color]}
+        materialLead={color === 'w' ? captured.material : -captured.material}
+        timeText={timed ? formatTime(time) : null}
+        isLowTime={timed && time <= LOW_TIME_SECONDS}
+      />
+    );
+  };
 
   return (
     <div className="game-grid-pixel">
-      <div className="bento-pixel board-frame" ref={boardWrapperRef} style={{ position: 'relative' }}>
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none',
-            zIndex: 10,
-          }}
-        />
-        <main className="board-container-pixel" ref={boardInnerRef}>
-          {board}
-        </main>
+      <div className="board-column">
+        {playerBar('b')}
+
+        <div
+          className={`bento-pixel board-frame ${checkmateFx ? 'board-shake' : ''}`}
+          ref={boardWrapperRef}
+        >
+          <canvas ref={canvasRef} className="fx-canvas" />
+          <main className="board-container-pixel" ref={boardInnerRef}>
+            {board}
+          </main>
+          {checkmateFx && (
+            <div className="checkmate-banner" role="status">
+              <span>CHECK</span><span>MATE!</span>
+            </div>
+          )}
+        </div>
+
+        {playerBar('w')}
       </div>
 
       <div className="side-pixel-wrapper">
         <div className="bento-pixel monitor-panel">
           <div className="monitor-title">SYSTEM STATUS</div>
-          <div className="monitor-badge blinking-text">{botThinking ? 'CPU THINKING...' : gameStatus}</div>
+          <div className={`monitor-badge ${isGameOver ? '' : 'blinking-text'}`}>
+            {botThinking ? 'CPU THINKING...' : gameStatus}
+          </div>
           <div className="stage-info">STAGE: {gameMode === 'bot' ? 'WORLD CPU BOT' : 'WORLD 1v1 LOCAL'}</div>
         </div>
 
-        <div className="bento-pixel player-panel-pixel black-retro">
-          <div className="player-title-bar">
-            <span className="player-tag" style={{ color: '#00b3ff' }}>P2 [BLUE] {gameMode === 'bot' && '(CPU)'}</span>
-            {timeMode !== 'none' && <div className="arcade-timer">{formatTime(blackTime)}</div>}
-          </div>
-        </div>
-
-        <div className="bento-pixel player-panel-pixel white-retro">
-          <div className="player-title-bar">
-            <span className="player-tag" style={{ color: '#ff3333' }}>P1 [RED] (YOU)</span>
-            {timeMode !== 'none' && <div className="arcade-timer">{formatTime(whiteTime)}</div>}
-          </div>
-        </div>
-
-        {/* ── NOTATION, docked right under the P1/P2 panels ── */}
         <MoveScoresheet
           moveHistory={moveHistory}
           lastMove={lastMove}

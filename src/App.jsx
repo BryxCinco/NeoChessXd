@@ -12,6 +12,7 @@ import { PromotionModal } from './components/PromotionModal';
 import { GameModals } from './components/GameModals';
 import { StartMenuScreen } from './components/StartMenuScreen';
 import { GameBoardScreen } from './components/GameBoardScreen';
+import { PieceSprite } from './pixelPieces';
 
 function App() {
   const [activeModal, setActiveModal] = useState(null);
@@ -55,6 +56,21 @@ function App() {
       {!chess.gameStarted && (
         <header className="game-header">
           <h1 className="pixel-title">NEO <span>CHESS DX</span></h1>
+          <div className="header-vs" aria-hidden="true">
+            <div className="header-army">
+              {['wP', 'wN', 'wB', 'wR', 'wQ'].map((code) => (
+                <PieceSprite key={code} code={code} size={30} className="header-army-extra" />
+              ))}
+              <PieceSprite code="wK" size={44} animated />
+            </div>
+            <span className="vs-text">VS</span>
+            <div className="header-army">
+              <PieceSprite code="bK" size={44} animated />
+              {['bQ', 'bR', 'bB', 'bN', 'bP'].map((code) => (
+                <PieceSprite key={code} code={code} size={30} className="header-army-extra" />
+              ))}
+            </div>
+          </div>
           <div className="header-subtitle"><span className="pixel-diamond" />SELECT STAGE WORLD<span className="pixel-diamond" /></div>
         </header>
       )}
@@ -122,7 +138,13 @@ function App() {
 
       {chess.isStarting && <CountdownOverlay countdownValue={chess.countdownValue} />}
 
-      {chess.pendingPromotion && <PromotionModal onSelect={chess.handlePromotionSelection} />}
+      {chess.pendingPromotion && (
+        <PromotionModal
+          color={chess.pendingPromotion.color}
+          onSelect={chess.handlePromotionSelection}
+          onCancel={chess.cancelPromotion}
+        />
+      )}
 
       <GameModals
         activeModal={activeModal}
@@ -162,7 +184,7 @@ function App() {
           onStartGame={chess.startGame}
         />
       ) : (
-        <div style={{ paddingTop: '76px' }}>
+        <div className="game-screen-wrap">
           <GameBoardScreen
             boardWrapperRef={chess.boardWrapperRef}
             boardInnerRef={chess.boardInnerRef}
@@ -170,6 +192,11 @@ function App() {
             boardWidth={chess.boardWidth}
             game={chess.game}
             onDrop={chess.onDrop}
+            onSquareClick={chess.onSquareClick}
+            onPieceDragBegin={chess.onPieceDragBegin}
+            captured={chess.captured}
+            checkmateFx={chess.checkmateFx}
+            isGameOver={chess.isGameOver}
             isDraggablePiece={chess.isDraggablePiece}
             botThinking={chess.botThinking}
             customSquareStyles={chess.customSquareStyles}

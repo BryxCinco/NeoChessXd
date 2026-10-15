@@ -5,6 +5,7 @@ export function usePixelAnimation() {
   const animationsRef = useRef([]);
   const animationFrameRef = useRef(null);
   const effectIndexRef = useRef(0);
+  const lastFrameRef = useRef(0);
 
   const triggerCaptureAnimation = useCallback((square, onComplete, customType = null) => {
     if (!canvasRef.current) {
@@ -81,11 +82,13 @@ export function usePixelAnimation() {
 
   function createEffect(type, x, y, size, onComplete) {
     const particles = [];
+    // Phones get ~60% of the particles — same look, much less work per frame.
+    const density = canvasRef.current && canvasRef.current.width < 520 ? 0.6 : 1;
     let duration = 50; 
 
     if (type === 'fire') {
       duration = 60;
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < Math.round(90 * density); i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * 4 + 2;
         particles.push({
@@ -101,7 +104,7 @@ export function usePixelAnimation() {
       }
     } else if (type === 'thunder') {
       duration = 45;
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < Math.round(70 * density); i++) {
         particles.push({
           x: x + (Math.random() * size - size / 2) * 0.7,
           y: y + (Math.random() * size - size / 2) * 0.7,
@@ -115,7 +118,7 @@ export function usePixelAnimation() {
       }
     } else if (type === 'frozen_eyes') {
       duration = 65; 
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < Math.round(60 * density); i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * 5 + 2;
         particles.push({
@@ -130,7 +133,7 @@ export function usePixelAnimation() {
       }
     } else if (type === 'blackhole') {
       duration = 70;
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < Math.round(90 * density); i++) {
         const angle = Math.random() * Math.PI * 2;
         const distance = Math.random() * (size * 1.5) + size * 0.3;
         particles.push({
@@ -145,7 +148,7 @@ export function usePixelAnimation() {
       }
     } else if (type === 'sandworm') {
       duration = 50;
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < Math.round(50 * density); i++) {
         particles.push({
           x: x,
           y: y + size / 2,
@@ -179,7 +182,7 @@ export function usePixelAnimation() {
         color: 'rgba(56, 189, 248, 0.6)',
         life: 55
       });
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < Math.round(15 * density); i++) {
         particles.push({
           type: 'ambient_sparkle',
           x: x + (Math.random() * 20 - 10),
@@ -226,16 +229,19 @@ export function usePixelAnimation() {
       // Bumabagsak ang kulungan at tumatama ang alikabok sa loob ng ~45 frames;
       // pagkatapos noon ay "frozen" na lang ito (nakadrawing pa rin, pero
       // humihinto na ang render loop para hindi maubos ang battery sa phone).
-      duration = 45;
+      duration = 55;
       particles.push({
         type: 'cage_iron',
         x: x,
-        y: y - size * 3,
+        y: y - size * 2.5,
         targetY: y,
-        vy: 14,
+        vy: 0,
+        gravity: size * 0.045,
+        bounces: 0,
         size: size,
         life: 999999,
-        landed: false
+        landed: false,
+        lockFrame: -1
       });
     } else if (type === 'swordslash') {
       duration = 45;
@@ -259,7 +265,7 @@ export function usePixelAnimation() {
       });
     } else if (type === 'arrow_rain') {
       duration = 80;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < Math.round(30 * density); i++) {
         particles.push({
           type: 'arrow',
           x: x + (Math.random() * size * 1.5 - size * 0.75),
@@ -286,7 +292,7 @@ export function usePixelAnimation() {
       });
     } else if (type === 'bat_swarm') {
       duration = 75;
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < Math.round(18 * density); i++) {
         particles.push({
           type: 'bat',
           x: x + (Math.random() * size - size / 2),
@@ -312,7 +318,7 @@ export function usePixelAnimation() {
       });
     } else if (type === 'plasma_surge') {
       duration = 60;
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < Math.round(40 * density); i++) {
         const angle = Math.random() * Math.PI * 2;
         particles.push({
           type: 'plasma_orb',
@@ -333,9 +339,67 @@ export function usePixelAnimation() {
     }
   }
 
-  function updateAndRender() {
+  // Iron cage over the mated king: hanging chain, top beam, 5 bars with a
+  // highlight, bottom rail, and a gold padlock that flashes when it locks.
+  // Slightly larger than one square so the bars clearly enclose the king.
+  function drawPixelCage(ctx, cage, frame) {
+    const u = cage.size / 15;
+    const w = u * 16;
+    const left = cage.x - w / 2;
+    const top = cage.y - w / 2;
+    // every rect snapped to whole pixels so edges stay crisp
+    const rect = (color, x, y, rw, rh) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.round(x), Math.round(y), Math.round(rw), Math.round(rh));
+    };
+
+    // chain up to the top edge of the board
+    let link = 0;
+    for (let cy = top - u * 3; cy > -u * 2; cy -= u * 2.5) {
+      rect(link++ % 2 ? '#64748b' : '#334155', left + w / 2 - u, cy - u, u * 2, u * 2);
+    }
+
+    // shadow on the square once landed
+    if (cage.landed) rect('rgba(0, 0, 0, 0.3)', left + u, top + w - u, w - u * 2, u);
+
+    // hook + top beam
+    rect('#1e293b', left + w / 2 - u * 2, top - u * 2, u * 4, u * 2);
+    rect('#1e293b', left, top, w, u * 2);
+    rect('#94a3b8', left + u, top, w - u * 2, u);
+
+    // bars
+    for (let i = 0; i < 5; i++) {
+      const bx = left + u + i * u * 3;
+      rect('#1e293b', bx, top + u * 2, u * 2, w - u * 4);
+      rect('#cbd5e1', bx, top + u * 2, u, w - u * 4);
+    }
+
+    // bottom rail
+    rect('#1e293b', left, top + w - u * 2, w, u * 2);
+    rect('#64748b', left + u, top + w - u * 2, w - u * 2, u);
+
+    // padlock (flashes white for a few frames right after it locks)
+    const flashing = cage.lockFrame >= 0 && frame - cage.lockFrame < 8 && (frame - cage.lockFrame) % 4 < 2;
+    const lx = left + w / 2 - u * 2;
+    const ly = top + w - u * 6;
+    rect('#120a1a', lx - u, ly - u * 2, u * 6, u * 6);
+    rect(flashing ? '#ffffff' : '#c48a00', lx, ly - u, u * 4, u);
+    rect(flashing ? '#ffffff' : '#ffd83a', lx, ly, u * 4, u * 3);
+    rect('#120a1a', lx + u * 1.5, ly + u, u, u);
+  }
+
+  function updateAndRender(now) {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Cap the effects at ~60fps: on 90/120Hz phones this halves the work
+    // and keeps every effect's timing the same as on a normal screen.
+    if (now - lastFrameRef.current < 15) {
+      animationFrameRef.current = requestAnimationFrame(updateAndRender);
+      return;
+    }
+    lastFrameRef.current = now;
+
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -744,60 +808,48 @@ export function usePixelAnimation() {
         }
 
       } else if (anim.type === 'cage') {
-        let cage = anim.particles.find(p => p.type === 'cage_iron');
+        const cage = anim.particles.find(p => p.type === 'cage_iron');
         if (cage) {
-          cage.life--;
-          
           if (!cage.landed) {
+            cage.vy += cage.gravity;
             cage.y += cage.vy;
             if (cage.y >= cage.targetY) {
               cage.y = cage.targetY;
-              cage.landed = true;
-              
-              for (let d = 0; d < 25; d++) {
-                anim.particles.push({
-                  type: 'cage_dust',
-                  x: cage.x + (Math.random() * cage.size - cage.size / 2),
-                  y: cage.targetY + cage.size / 2,
-                  vx: Math.random() * 6 - 3,
-                  vy: -(Math.random() * 4 + 1),
-                  size: Math.random() * 4 + 2,
-                  color: Math.random() > 0.5 ? '#94a3b8' : '#64748b',
-                  life: 15 + Math.random() * 12
-                });
+              if (cage.bounces === 0) {
+                // first impact: dust burst + a small bounce
+                cage.bounces = 1;
+                cage.vy = -cage.vy * 0.28;
+                for (let d = 0; d < 18; d++) {
+                  anim.particles.push({
+                    type: 'cage_dust',
+                    x: cage.x + (Math.random() * cage.size - cage.size / 2),
+                    y: cage.targetY + cage.size / 2 - 2,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: -(Math.random() * 3 + 1),
+                    size: Math.max(2, Math.round(cage.size / 16)) * (Math.random() > 0.5 ? 2 : 1),
+                    color: Math.random() > 0.5 ? '#94a3b8' : '#64748b',
+                    life: 14 + Math.random() * 10
+                  });
+                }
+              } else {
+                cage.landed = true;
+                cage.lockFrame = anim.currentFrame;
               }
             }
           }
-
-          ctx.strokeStyle = '#475569';
-          ctx.lineWidth = 4;
-          const halfSize = cage.size / 2;
-          
-          ctx.strokeRect(cage.x - halfSize, cage.y - halfSize, cage.size, cage.size);
-          
-          const columnsCount = 5;
-          for (let c = 1; c < columnsCount; c++) {
-            const barX = cage.x - halfSize + (cage.size / columnsCount) * c;
-            ctx.beginPath();
-            ctx.moveTo(barX, cage.y - halfSize);
-            ctx.lineTo(barX, cage.y + halfSize);
-            ctx.stroke();
-          }
-
-          ctx.fillStyle = '#94a3b8';
-          ctx.fillRect(cage.x - 10, cage.y - halfSize - 6, 20, 6);
+          drawPixelCage(ctx, cage, anim.currentFrame);
         }
 
         anim.particles.forEach((p) => {
           if (p.type === 'cage_dust') {
             p.x += p.vx;
             p.y += p.vy;
+            p.vy += 0.15;
             p.life--;
             ctx.fillStyle = p.color;
             ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
           }
         });
-        // Ginawang permanenteng active habang naglalaro sa pamamagitan ng hindi pag-filter base sa life kung ito ay cage
         anim.particles = anim.particles.filter(p => p.type !== 'cage_dust' || p.life > 0);
 
       } else if (anim.type === 'swordslash') {
