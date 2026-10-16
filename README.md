@@ -4,6 +4,8 @@ An 8-bit pixel-art chess game for the browser: a plumber-kingdom **RED army** ag
 
 **Play it:** [neo-chess-xd.vercel.app](https://neo-chess-xd.vercel.app)
 
+**Full documentation:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)
+
 ## Features
 
 - **Modes:** 1 vs 1 on one device, or player vs CPU (Easy, Normal, Hard)
