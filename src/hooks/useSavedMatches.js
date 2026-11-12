@@ -70,6 +70,12 @@ export function useSavedMatches({ chess, audio, setActiveModal }) {
       whiteTime: chess.whiteTime,
       blackTime: chess.blackTime,
       timeoutLoser: chess.timeoutLoser,
+      // Which side the human plays vs the CPU, and how the game ended /
+      // what was logged, so a loaded match picks up exactly where it stopped.
+      playerColor: chess.playerColor,
+      manualEnd: chess.manualEnd,
+      matchNotes: chess.matchNotes,
+      hintsUsed: chess.hintsUsed,
     };
 
     // Keep the newest (cap - 1) slots, which drops the oldest when full.

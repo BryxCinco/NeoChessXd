@@ -1,35 +1,49 @@
-import { PieceSprite } from '../pixelPieces';
 import { PixelModal } from './PixelModal';
+import { SettingsModal } from './SettingsModal';
 import { MAX_SAVE_SLOTS } from '../hooks/useSavedMatches';
+
+const COLOR_NAME = { w: 'RED', b: 'BLUE' };
 
 // Renders whichever modal matches `activeModal`, all built on <PixelModal>.
 // The pause-menu actions live here so App.jsx just wires up the callbacks.
+// (Game over is NOT a modal: see <GameOverBar>, which leaves the board visible.)
 export function GameModals({
   activeModal,
-  gameStatus,
   isAnimatingMove,
   pendingPromotion,
   pendingLoadMatch,
+  pendingDrawOffer,
+  canEndManually,
+  gameMode,
+  settings,
   play,
   onClose,
-  onOpenQuitConfirm,
+  onOpenModal,
   onRestart,
   onSave,
   onConfirmOverwrite,
   onConfirmLoad,
   onConfirmQuit,
   onConfirmDelete,
+  onConfirmResign,
+  onOfferDraw,
+  onAnswerDraw,
+  onCopyPgn,
+  onDownloadPgn,
+  onChangeSetting,
+  onResetSettings,
 }) {
   if (!activeModal) return null;
   const disabled = !!(isAnimatingMove || pendingPromotion);
   const close = () => { play('click'); onClose(); };
+  const open = (name) => { play('click'); onOpenModal(name); };
 
   switch (activeModal) {
     case 'pause_menu':
       return (
         <PixelModal title="[PAUSE MENU]" onCancel={close}>
           <div className="btn-group-pixel pause-menu-grid">
-            <button type="button" className="pixel-action-btn action-continue" onClick={close}>
+            <button type="button" className="pixel-action-btn action-continue pause-wide" onClick={close}>
               ▶ CONTINUE
             </button>
             <button type="button" className="pixel-action-btn action-restart" onClick={onRestart} disabled={disabled}>
@@ -40,14 +54,72 @@ export function GameModals({
             </button>
             <button
               type="button"
+              className="pixel-action-btn action-draw"
+              onClick={() => { play('click'); onOfferDraw(); }}
+              disabled={disabled || !canEndManually}
+            >
+              ½ OFFER DRAW
+            </button>
+            <button
+              type="button"
+              className="pixel-action-btn action-resign"
+              onClick={() => open('confirm_resign')}
+              disabled={disabled || !canEndManually}
+            >
+              ⚑ RESIGN
+            </button>
+            <button type="button" className="pixel-action-btn action-pgn" onClick={onCopyPgn}>
+              ⧉ COPY PGN
+            </button>
+            <button type="button" className="pixel-action-btn action-pgn" onClick={onDownloadPgn}>
+              ⇩ DOWNLOAD PGN
+            </button>
+            <button type="button" className="pixel-action-btn action-settings" onClick={() => open('settings')}>
+              ⚙ SETTINGS
+            </button>
+            <button
+              type="button"
               className="pixel-action-btn action-forfeit"
-              onClick={() => { play('click'); onOpenQuitConfirm(); }}
+              onClick={() => open('confirm_quit')}
               disabled={disabled}
             >
               ⏻ OUT
             </button>
           </div>
         </PixelModal>
+      );
+
+    case 'settings':
+      return (
+        <SettingsModal settings={settings} onChange={onChangeSetting} onReset={onResetSettings} onClose={close} />
+      );
+
+    case 'confirm_resign':
+      return (
+        <PixelModal
+          title="[RESIGN]"
+          tone="alert"
+          message={gameMode === 'bot' ? 'GIVE UP THIS MATCH? THE CPU WINS.' : 'GIVE UP THIS MATCH? YOUR OPPONENT WINS.'}
+          confirmLabel="YES (RESIGN)"
+          confirmVariant="danger"
+          onConfirm={onConfirmResign}
+          cancelLabel="NO (KEEP PLAYING)"
+          onCancel={close}
+        />
+      );
+
+    case 'draw_offer':
+      return (
+        <PixelModal
+          title="[DRAW OFFER]"
+          message={`${COLOR_NAME[pendingDrawOffer] || 'YOUR OPPONENT'} OFFERS A DRAW. ${
+            COLOR_NAME[pendingDrawOffer === 'w' ? 'b' : 'w']
+          }, DO YOU ACCEPT?`}
+          confirmLabel="ACCEPT DRAW"
+          onConfirm={() => onAnswerDraw(true)}
+          cancelLabel="DECLINE"
+          onCancel={() => onAnswerDraw(false)}
+        />
       );
 
     case 'save_success':
@@ -150,35 +222,6 @@ export function GameModals({
           onCancel={close}
         />
       );
-
-    case 'game_over': {
-      // 'w' / 'b' when someone won (checkmate or time-out), null for a draw.
-      const winnerColor = /WINNER: RED/.test(gameStatus) ? 'w' : /WINNER: BLUE/.test(gameStatus) ? 'b' : null;
-      return (
-        <PixelModal title="[GAME OVER]" tone="gold">
-          <div className="game-over-hero">
-            {winnerColor ? (
-              <PieceSprite code={`${winnerColor}K`} size={80} animated />
-            ) : (
-              <>
-                <PieceSprite code="wK" size={60} animated />
-                <span className="vs-text">=</span>
-                <PieceSprite code="bK" size={60} animated />
-              </>
-            )}
-          </div>
-          <p className="modal-text-pixel">{gameStatus}</p>
-          <div className="btn-group-pixel">
-            <button type="button" className="pixel-action-btn game-over-btn-replay" onClick={onRestart}>
-              ↺ REPLAY
-            </button>
-            <button type="button" className="pixel-action-btn game-over-btn-menu" onClick={onConfirmQuit}>
-              ▤ MAIN MENU
-            </button>
-          </div>
-        </PixelModal>
-      );
-    }
 
     default:
       return null;

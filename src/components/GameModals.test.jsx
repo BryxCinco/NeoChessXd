@@ -1,23 +1,34 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameModals } from './GameModals';
+import { DEFAULT_SETTINGS } from '../hooks/useSettings';
 
 function renderModals(activeModal, extra = {}) {
   const props = {
     activeModal,
-    gameStatus: 'RED TURN',
     isAnimatingMove: false,
     pendingPromotion: null,
     pendingLoadMatch: null,
+    pendingDrawOffer: null,
+    canEndManually: true,
+    gameMode: '1v1',
+    settings: { ...DEFAULT_SETTINGS },
     play: vi.fn(),
     onClose: vi.fn(),
-    onOpenQuitConfirm: vi.fn(),
+    onOpenModal: vi.fn(),
     onRestart: vi.fn(),
     onSave: vi.fn(),
     onConfirmOverwrite: vi.fn(),
     onConfirmLoad: vi.fn(),
     onConfirmQuit: vi.fn(),
     onConfirmDelete: vi.fn(),
+    onConfirmResign: vi.fn(),
+    onOfferDraw: vi.fn(),
+    onAnswerDraw: vi.fn(),
+    onCopyPgn: vi.fn(),
+    onDownloadPgn: vi.fn(),
+    onChangeSetting: vi.fn(),
+    onResetSettings: vi.fn(),
     ...extra,
   };
   const view = render(<GameModals {...props} />);
@@ -32,6 +43,10 @@ describe('GameModals', () => {
     expect(renderModals('no_such_modal').container).toBeEmptyDOMElement();
   });
 
+  it('game over is not a modal any more (the board must stay visible)', () => {
+    expect(renderModals('game_over').container).toBeEmptyDOMElement();
+  });
+
   it('pause menu: every action is wired up', async () => {
     const { props } = renderModals('pause_menu');
     expect(screen.getByRole('dialog', { name: '[PAUSE MENU]' })).toBeInTheDocument();
@@ -42,19 +57,73 @@ describe('GameModals', () => {
     expect(props.onRestart).toHaveBeenCalledTimes(1);
     await click(/SAVE GAME/);
     expect(props.onSave).toHaveBeenCalledWith(); // never handed the click event
+    await click(/OFFER DRAW/);
+    expect(props.onOfferDraw).toHaveBeenCalledTimes(1);
+    await click(/RESIGN/);
+    expect(props.onOpenModal).toHaveBeenLastCalledWith('confirm_resign'); // asks first
+    expect(props.onConfirmResign).not.toHaveBeenCalled();
+    await click(/COPY PGN/);
+    expect(props.onCopyPgn).toHaveBeenCalledTimes(1);
+    await click(/DOWNLOAD PGN/);
+    expect(props.onDownloadPgn).toHaveBeenCalledTimes(1);
+    await click(/SETTINGS/);
+    expect(props.onOpenModal).toHaveBeenLastCalledWith('settings');
     await click(/OUT/);
-    expect(props.onOpenQuitConfirm).toHaveBeenCalledTimes(1);
+    expect(props.onOpenModal).toHaveBeenLastCalledWith('confirm_quit');
 
     await userEvent.keyboard('{Escape}');
     expect(props.onClose).toHaveBeenCalledTimes(2);
   });
 
-  it('pause menu: restart / save / quit are disabled while a move is animating', () => {
+  it('pause menu: game-changing actions are disabled while a move is animating', () => {
     renderModals('pause_menu', { isAnimatingMove: true });
     expect(screen.getByRole('button', { name: /CONTINUE/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /RESTART/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /SAVE GAME/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /OUT/ })).toBeDisabled();
+    for (const name of [/RESTART/, /SAVE GAME/, /OFFER DRAW/, /RESIGN/, /OUT/]) {
+      expect(screen.getByRole('button', { name })).toBeDisabled();
+    }
+    expect(screen.getByRole('button', { name: /COPY PGN/ })).toBeEnabled();
+  });
+
+  it('pause menu: resign and draw are disabled once the game is over', () => {
+    renderModals('pause_menu', { canEndManually: false });
+    expect(screen.getByRole('button', { name: /OFFER DRAW/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /RESIGN/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /RESTART/ })).toBeEnabled();
+  });
+
+  it('resign confirmation: YES resigns, NO keeps playing', async () => {
+    const { props, rerender } = renderModals('confirm_resign');
+    expect(screen.getByText('GIVE UP THIS MATCH? YOUR OPPONENT WINS.')).toBeInTheDocument();
+    await click('NO (KEEP PLAYING)');
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onConfirmResign).not.toHaveBeenCalled();
+    await click('YES (RESIGN)');
+    expect(props.onConfirmResign).toHaveBeenCalledTimes(1);
+
+    rerender(<GameModals {...props} gameMode="bot" />);
+    expect(screen.getByText('GIVE UP THIS MATCH? THE CPU WINS.')).toBeInTheDocument();
+  });
+
+  it('draw offer (1v1): names both sides and passes on the answer', async () => {
+    const { props, rerender } = renderModals('draw_offer', { pendingDrawOffer: 'w' });
+    expect(screen.getByText('RED OFFERS A DRAW. BLUE, DO YOU ACCEPT?')).toBeInTheDocument();
+    await click('ACCEPT DRAW');
+    expect(props.onAnswerDraw).toHaveBeenLastCalledWith(true);
+    await click('DECLINE');
+    expect(props.onAnswerDraw).toHaveBeenLastCalledWith(false);
+    await userEvent.keyboard('{Escape}'); // Escape = decline
+    expect(props.onAnswerDraw).toHaveBeenCalledTimes(3);
+    expect(props.onAnswerDraw).toHaveBeenLastCalledWith(false);
+
+    rerender(<GameModals {...props} pendingDrawOffer="b" />);
+    expect(screen.getByText('BLUE OFFERS A DRAW. RED, DO YOU ACCEPT?')).toBeInTheDocument();
+  });
+
+  it('settings: shows the settings screen and closes with DONE', async () => {
+    const { props } = renderModals('settings');
+    expect(screen.getByRole('dialog', { name: '[SETTINGS]' })).toBeInTheDocument();
+    await click('DONE');
+    expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
   it('save success: OK closes it', async () => {
@@ -134,25 +203,5 @@ describe('GameModals', () => {
 
     await click('YES (ERASE)');
     expect(props.onConfirmDelete).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    ['WINNER: RED (P1)', 1],
-    ['TIME OUT - WINNER: BLUE (P2 / CPU)', 1],
-    ['DRAW - STALEMATE', 2],
-  ])('game over "%s": shows the result with %i king sprite(s)', async (gameStatus, kings) => {
-    const { props, container } = renderModals('game_over', { gameStatus });
-    expect(screen.getByRole('dialog', { name: '[GAME OVER]' })).toHaveClass('tone-gold');
-    expect(screen.getByText(gameStatus)).toBeInTheDocument();
-    expect(container.querySelectorAll('.game-over-hero svg')).toHaveLength(kings);
-
-    await click(/REPLAY/);
-    expect(props.onRestart).toHaveBeenCalledTimes(1);
-    await click(/MAIN MENU/);
-    expect(props.onConfirmQuit).toHaveBeenCalledTimes(1);
-
-    // The result must be acknowledged with a button: Escape does not dismiss it.
-    await userEvent.keyboard('{Escape}');
-    expect(props.onClose).not.toHaveBeenCalled();
   });
 });

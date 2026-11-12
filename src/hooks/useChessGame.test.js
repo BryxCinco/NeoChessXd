@@ -283,17 +283,18 @@ describe('undo / redo', () => {
     play(['f2', 'f3'], ['e7', 'e5'], ['g2', 'g4'], ['d8', 'h4']);
     expect(chess().isGameOver).toBe(true);
     act(() => vi.advanceTimersByTime(2000));
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
 
     act(() => chess().undoMove());
     expect(chess().isGameOver).toBe(false);
+    expect(chess().showGameOver).toBe(false);
     expect(modal()).toBeNull();
     expect(chess().gameStatus).toBe('BLUE TURN');
   });
 });
 
 describe('game end detection', () => {
-  it('checkmate: announces the winner, then opens the game-over modal', () => {
+  it('checkmate: announces the winner, then shows the game-over bar (never a modal)', () => {
     const { chess, play, modal } = setup();
     vi.useFakeTimers();
     play(['f2', 'f3'], ['e7', 'e5'], ['g2', 'g4'], ['d8', 'h4']);
@@ -301,15 +302,17 @@ describe('game end detection', () => {
     expect(chess().gameStatus).toBe('WINNER: BLUE (P2)');
     expect(chess().isGameOver).toBe(true);
     expect(chess().checkmateFx).toBe(true);
-    expect(modal()).toBeNull(); // the banner plays first
+    expect(chess().showGameOver).toBe(false); // the CHECKMATE banner plays first
 
     act(() => vi.advanceTimersByTime(2000));
     expect(chess().checkmateFx).toBe(false);
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
+    expect(chess().winner).toBe('b');
+    expect(modal()).toBeNull(); // the board is never covered
   });
 
   it('threefold repetition is a draw', () => {
-    const { chess, play, modal } = setup();
+    const { chess, play } = setup();
     const shuffle = [['g1', 'f3'], ['g8', 'f6'], ['f3', 'g1'], ['f6', 'g8']];
     play(...shuffle);
     expect(chess().isGameOver).toBe(false);
@@ -317,18 +320,18 @@ describe('game end detection', () => {
 
     expect(chess().isGameOver).toBe(true);
     expect(chess().gameStatus).toBe('DRAW - 3-FOLD REPETITION');
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
   });
 
   it('the 50-move rule is a draw', () => {
     // 99 half-moves without a capture or pawn move; one more makes 100.
-    const { chess, drop, modal } = setup(save({ fen: '8/8/4k3/8/8/4K3/8/7R w - - 99 80' }));
+    const { chess, drop } = setup(save({ fen: '8/8/4k3/8/8/4K3/8/7R w - - 99 80' }));
     expect(chess().isGameOver).toBe(false);
 
     drop('h1', 'h2');
     expect(chess().isGameOver).toBe(true);
     expect(chess().gameStatus).toBe('DRAW - 50-MOVE RULE');
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
   });
 
   it('stalemate is a draw', () => {
@@ -380,23 +383,23 @@ describe('clock', () => {
     ['king + knight', '6nk/8/8/8/8/8/8/3QK3 w - - 0 1'],
   ])('running out of time against %s is a DRAW, not a loss', (_name, fen) => {
     vi.useFakeTimers();
-    const { chess, modal } = setup(save({ fen, timeMode: '1', whiteTime: 0.5, blackTime: 60 }));
+    const { chess } = setup(save({ fen, timeMode: '1', whiteTime: 0.5, blackTime: 60 }));
 
     act(() => vi.advanceTimersByTime(1000));
     expect(chess().whiteTime).toBe(0);
     expect(chess().timeoutLoser).toBe('w');
     expect(chess().isGameOver).toBe(true);
     expect(chess().gameStatus).toBe('DRAW - TIME OUT (NO MATING MATERIAL)');
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
   });
 
   it('running out of time against real mating material is a loss', () => {
     vi.useFakeTimers();
-    const { chess, modal } = setup(save({ fen: '7k/r7/8/8/8/8/8/3QK3 w - - 0 1', timeMode: '1', whiteTime: 0.5, blackTime: 60 }));
+    const { chess } = setup(save({ fen: '7k/r7/8/8/8/8/8/3QK3 w - - 0 1', timeMode: '1', whiteTime: 0.5, blackTime: 60 }));
 
     act(() => vi.advanceTimersByTime(1000));
     expect(chess().gameStatus).toBe('TIME OUT - WINNER: BLUE (P2)');
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
     expect(chess().canUndo).toBe(false); // a time-out can't be undone
   });
 
@@ -494,11 +497,11 @@ describe('session auto-save', () => {
     logged.mockRestore();
   });
 
-  it('a finished game is restored with the game-over modal open', () => {
+  it('a finished game is restored with the game-over bar showing', () => {
     const mated = playMoves(['f3', 'e5', 'g4', 'Qh4#']);
-    const { chess, modal } = setup(save({ pgn: mated.pgn(), fen: mated.fen(), gameStatus: 'WINNER: BLUE (P2)' }));
+    const { chess } = setup(save({ pgn: mated.pgn(), fen: mated.fen(), gameStatus: 'WINNER: BLUE (P2)' }));
     expect(chess().isGameOver).toBe(true);
-    expect(modal()).toBe('game_over');
+    expect(chess().showGameOver).toBe(true);
   });
 });
 

@@ -1,4 +1,6 @@
 
+import { timeModeLabel } from '../game/timeControl';
+
 // Shared saved-match card renderer — used by BOTH the compact wizard's
 // dedicated "LOAD GAME" step and the desktop always-visible save panel,
 // so the two can never drift out of sync with each other.
@@ -9,7 +11,7 @@ export function SaveSlotCard({ match, onResume, onDelete }) {
         <span className="save-mode-badge">
           {match.gameMode === 'bot' ? `CPU (${(match.difficulty || '').toUpperCase()})` : '1VS1'}
         </span>
-        <span className="save-time-badge">TIME: {match.timeMode === 'none' ? 'INF' : `${match.timeMode}M`}</span>
+        <span className="save-time-badge">TIME: {timeModeLabel(match.timeMode)}</span>
       </div>
       <div className="card-mid">
         <div className="card-date">DATE: {match.date}</div>

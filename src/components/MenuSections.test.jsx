@@ -6,6 +6,8 @@ import {
   LoadGameSection,
   ModeSelectionSection,
   DifficultySelectionSection,
+  PlayAsSection,
+  SettingsButton,
   TimeSelectionSection,
   SavedMatchesPanel,
 } from './MenuSections';
@@ -48,27 +50,49 @@ describe('menu sections', () => {
     expect(onSelect.mock.calls).toEqual([['1v1'], ['bot']]);
   });
 
-  it('difficulty selection reports easy / medium / hard', async () => {
+  it('difficulty selection reports easy / medium / tough / hard', async () => {
     const onSelect = vi.fn();
     render(<DifficultySelectionSection difficulty="medium" onSelect={onSelect} />);
     expect(screen.getByRole('button', { name: 'NORMAL' })).toHaveClass('active');
-    for (const name of ['EASY', 'NORMAL', 'HARD CORE']) await userEvent.click(screen.getByRole('button', { name }));
-    expect(onSelect.mock.calls).toEqual([['easy'], ['medium'], ['hard']]);
+    for (const name of ['EASY', 'NORMAL', 'TOUGH', 'HARD CORE']) await userEvent.click(screen.getByRole('button', { name }));
+    expect(onSelect.mock.calls).toEqual([['easy'], ['medium'], ['tough'], ['hard']]);
   });
 
-  it('time selection reports every preset, and is step 04 for bot matches / 03 for local', async () => {
+  it('time selection reports every preset (with increments), and is step 05 for bot matches / 03 for local', async () => {
     const onSelect = vi.fn();
     const { rerender } = render(<TimeSelectionSection gameMode="bot" timeMode="5" onSelect={onSelect} />);
-    expect(screen.getByText('04')).toBeInTheDocument();
+    expect(screen.getByText('05')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '05:00' })).toHaveClass('active');
-    for (const name of ['NO LIMIT', '00:30', '01:00', '05:00', '10:00', '30:00']) {
+    for (const name of ['NO LIMIT', '00:30', '01:00', '3+2', '05:00', '5+3', '10+0', '15+10', '30:00']) {
       await userEvent.click(screen.getByRole('button', { name }));
     }
-    expect(onSelect.mock.calls.flat()).toEqual(['none', '0.5', '1', '5', '10', '30']);
+    expect(onSelect.mock.calls.flat()).toEqual(['none', '0.5', '1', '3+2', '5', '5+3', '10', '15+10', '30']);
 
     rerender(<TimeSelectionSection gameMode="1v1" timeMode="none" onSelect={onSelect} />);
     expect(screen.getByText('03')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'NO LIMIT' })).toHaveClass('active');
+  });
+
+  it('side selection offers RED / BLUE / RANDOM and marks the current choice', async () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<PlayAsSection colorChoice="w" onSelect={onSelect} />);
+    expect(screen.getByRole('group', { name: 'Choose your side' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /PLAY AS RED/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /PLAY AS BLUE/ })).toHaveAttribute('aria-pressed', 'false');
+
+    for (const name of [/PLAY AS RED/, /PLAY AS BLUE/, /RANDOM/]) await userEvent.click(screen.getByRole('button', { name }));
+    expect(onSelect.mock.calls.flat()).toEqual(['w', 'b', 'random']);
+
+    rerender(<PlayAsSection colorChoice="random" onSelect={onSelect} />);
+    expect(screen.getByRole('button', { name: /RANDOM/ })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: /PLAY AS RED/ })).not.toHaveClass('active');
+  });
+
+  it('the settings button opens the settings', async () => {
+    const onOpen = vi.fn();
+    render(<SettingsButton onOpen={onOpen} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it('the load section and the desktop save panel list the saved matches', () => {
@@ -87,6 +111,9 @@ describe('StartMenuScreen', () => {
     isCompactLayout: false,
     isMuted: false,
     onToggleAudio: vi.fn(),
+    onOpenSettings: vi.fn(),
+    colorChoice: 'w',
+    onSelectColor: vi.fn(),
     menuStep: 'start',
     wizardTotalSteps: 3,
     wizardCurrentStepNumber: 1,
@@ -111,10 +138,15 @@ describe('StartMenuScreen', () => {
     const { rerender } = render(<StartMenuScreen {...props} />);
     expect(screen.getByText('[SAVED MATCHES DATA]')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'EASY' })).not.toBeInTheDocument(); // no difficulty until BOT is picked
+    expect(screen.queryByRole('button', { name: /PLAY AS BLUE/ })).not.toBeInTheDocument(); // nor a side
     expect(screen.getByRole('button', { name: 'PUSH START BUTTON' })).toBeDisabled();
 
     rerender(<StartMenuScreen {...props} gameMode="bot" timeMode="5" />);
     expect(screen.getByRole('button', { name: 'EASY' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /PLAY AS BLUE/ }));
+    expect(props.onSelectColor).toHaveBeenCalledWith('b');
+    await userEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(props.onOpenSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'PUSH START BUTTON' })).toBeDisabled(); // still needs a difficulty
 
     rerender(<StartMenuScreen {...props} gameMode="bot" difficulty="easy" timeMode="5" />);
@@ -149,6 +181,12 @@ describe('StartMenuScreen', () => {
 
     rerender(<StartMenuScreen {...props} gameMode="bot" menuStep="difficulty" wizardCurrentStepNumber={3} />);
     expect(screen.getByRole('button', { name: /NEXT/ })).toBeDisabled();
+
+    // The side step always has an answer (a remembered choice), so NEXT is enabled.
+    rerender(<StartMenuScreen {...props} gameMode="bot" difficulty="easy" menuStep="color" wizardCurrentStepNumber={4} />);
+    expect(screen.getByRole('button', { name: /PLAY AS RED/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /NEXT/ })).toBeEnabled();
+    rerender(<StartMenuScreen {...props} gameMode="bot" menuStep="difficulty" wizardCurrentStepNumber={3} />);
     await userEvent.click(screen.getByRole('button', { name: /BACK/ }));
     expect(props.onPrevStep).toHaveBeenCalledTimes(1);
   });

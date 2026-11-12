@@ -1,9 +1,11 @@
 import {
   AudioToggleButton,
+  SettingsButton,
   StartSelectionSection,
   LoadGameSection,
   ModeSelectionSection,
   DifficultySelectionSection,
+  PlayAsSection,
   TimeSelectionSection,
   SavedMatchesPanel,
 } from './MenuSections';
@@ -12,12 +14,14 @@ export function StartMenuScreen({
   isCompactLayout,
   isMuted,
   onToggleAudio,
+  onOpenSettings,
   menuStep,
   wizardTotalSteps,
   wizardCurrentStepNumber,
   gameMode,
   difficulty,
   timeMode,
+  colorChoice,
   savedMatches,
   onNewGame,
   onLoadGame,
@@ -25,6 +29,7 @@ export function StartMenuScreen({
   onDelete,
   onSelectMode,
   onSelectDifficulty,
+  onSelectColor,
   onSelectTime,
   onNextStep,
   onPrevStep,
@@ -32,7 +37,12 @@ export function StartMenuScreen({
 }) {
   const canGoNext = !((menuStep === 'mode' && !gameMode) || (menuStep === 'difficulty' && !difficulty));
   const canStart = !!gameMode && !(gameMode === 'bot' && !difficulty) && !!timeMode;
-  const audioToggleButton = <AudioToggleButton isMuted={isMuted} onToggle={onToggleAudio} />;
+  const headerButtons = (
+    <div className="menu-header-buttons">
+      <AudioToggleButton isMuted={isMuted} onToggle={onToggleAudio} />
+      <SettingsButton onOpen={onOpenSettings} />
+    </div>
+  );
 
   if (!isCompactLayout) {
     return (
@@ -40,11 +50,12 @@ export function StartMenuScreen({
         <div className="menu-container bento-pixel">
           <div className="menu-header-row">
             <h2 className="section-pixel-title">[CONFIG MODULE]</h2>
-            {audioToggleButton}
+            {headerButtons}
           </div>
 
           <ModeSelectionSection gameMode={gameMode} onSelect={onSelectMode} />
           {gameMode === 'bot' && <DifficultySelectionSection difficulty={difficulty} onSelect={onSelectDifficulty} />}
+          {gameMode === 'bot' && <PlayAsSection colorChoice={colorChoice} onSelect={onSelectColor} />}
           <TimeSelectionSection gameMode={gameMode} timeMode={timeMode} onSelect={onSelectTime} />
 
           <button className="start-pixel-btn" onClick={onStartGame} disabled={!canStart}>
@@ -62,7 +73,7 @@ export function StartMenuScreen({
       <div className="menu-container bento-pixel wizard-card">
         <div className="menu-header-row">
           <h2 className="section-pixel-title">[CONFIG MODULE]</h2>
-          {audioToggleButton}
+          {headerButtons}
         </div>
 
         {menuStep !== 'load' && (
@@ -82,6 +93,9 @@ export function StartMenuScreen({
           {menuStep === 'mode' && <ModeSelectionSection gameMode={gameMode} onSelect={onSelectMode} />}
           {menuStep === 'difficulty' && gameMode === 'bot' && (
             <DifficultySelectionSection difficulty={difficulty} onSelect={onSelectDifficulty} />
+          )}
+          {menuStep === 'color' && gameMode === 'bot' && (
+            <PlayAsSection colorChoice={colorChoice} onSelect={onSelectColor} />
           )}
           {menuStep === 'time' && <TimeSelectionSection gameMode={gameMode} timeMode={timeMode} onSelect={onSelectTime} />}
         </div>

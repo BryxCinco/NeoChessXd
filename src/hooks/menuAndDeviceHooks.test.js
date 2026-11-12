@@ -58,16 +58,21 @@ describe('useMenuWizard', () => {
     expect(hook().menuStep).toBe('start');
   });
 
-  it('a bot match adds the difficulty step: start → mode → difficulty → time', () => {
+  it('a bot match adds two steps: start → mode → difficulty → color → time', () => {
     const { hook, audio } = setup('bot');
-    expect(hook().wizardTotalSteps).toBe(4);
+    expect(hook().wizardTotalSteps).toBe(5);
     act(() => hook().setMenuStep('mode'));
     act(() => hook().goToNextMenuStep());
     expect(hook().menuStep).toBe('difficulty');
     expect(hook().wizardCurrentStepNumber).toBe(3);
     act(() => hook().goToNextMenuStep());
-    expect(hook().menuStep).toBe('time');
+    expect(hook().menuStep).toBe('color');
     expect(hook().wizardCurrentStepNumber).toBe(4);
+    act(() => hook().goToNextMenuStep());
+    expect(hook().menuStep).toBe('time');
+    expect(hook().wizardCurrentStepNumber).toBe(5);
+    act(() => hook().goToPrevMenuStep());
+    expect(hook().menuStep).toBe('color');
     act(() => hook().goToPrevMenuStep());
     expect(hook().menuStep).toBe('difficulty');
     act(() => hook().goToPrevMenuStep());

@@ -2,6 +2,11 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import { usePixelAnimation } from '../usePixelAnimation';
 import { requestBotMove } from '../bot/requestBotMove';
+import { evaluatePosition } from '../bot/engine';
+import { parseTimeMode } from '../game/timeControl';
+import { loadColorChoice, saveColorChoice, resolveColor, opposite } from '../game/colorChoice';
+import { botAcceptsDraw } from '../game/drawOffer';
+import { buildPgn } from '../game/pgnExport';
 
 const SESSION_KEY = 'neochess_active_session';
 // The CPU always waits at least this long, so an instant reply on EASY
@@ -9,11 +14,14 @@ const SESSION_KEY = 'neochess_active_session';
 const BOT_MIN_THINK_MS = 450;
 // Longest elimination effect is ~1.6 s; this only fires if one never finishes.
 const CAPTURE_SAFETY_MS = 2300;
-// Let the cage land and the CHECKMATE banner play before the modal covers it.
+// Let the cage land and the CHECKMATE banner play before the game-over bar shows.
 const CHECKMATE_MODAL_DELAY_MS = 1600;
+// Hints per game against the CPU. TOUGH and HARD CORE get none.
+export const HINT_LIMITS = { easy: 3, medium: 1 };
 
 const PIECE_VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const START_COUNT = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+const COLOR_NAME = { w: 'RED', b: 'BLUE' };
 
 // Square overlays, kept chunky/pixel-styled (hard edges, no blur).
 const SQUARE_FX = {
@@ -28,6 +36,8 @@ const SQUARE_FX = {
   },
   captureRing: { boxShadow: 'inset 0 0 0 5px rgba(232, 40, 43, 0.8)', cursor: 'pointer' },
   check: { backgroundImage: 'linear-gradient(rgba(232, 40, 43, 0.6), rgba(232, 40, 43, 0.6))' },
+  // Pulsing outline on the hint's from / to squares (keyframes in App.css).
+  hint: { boxShadow: 'inset 0 0 0 5px rgba(51, 216, 115, 0.95)', animation: 'hintPulse 0.9s steps(2, start) infinite' },
 };
 
 // Copies a game WITH its move history (a FEN-only copy would forget earlier
@@ -102,7 +112,11 @@ function formatTime(seconds) {
   return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
-export function useChessGame({ audio, activeModal, setActiveModal }) {
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+// `animations: false` (settings) skips the capture effects and the
+// checkmate cage. `notify(text, tone)` shows a toast.
+export function useChessGame({ audio, activeModal, setActiveModal, animations = true, notify = () => {} }) {
   const boardWrapperRef = useRef(null);
   const boardInnerRef = useRef(null);
   const countdownTimersRef = useRef([]);
@@ -116,14 +130,29 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   const [timeMode, setTimeMode] = useState(null);
   const [gameStarted, setGameStarted] = useState(false);
 
+  // Bot matches: the side the human asked for ('w' | 'b' | 'random',
+  // remembered between visits) and the side they actually got this match.
+  const [colorChoice, setColorChoiceState] = useState(loadColorChoice);
+  const [playerColor, setPlayerColor] = useState('w');
+
   const [isStarting, setIsStarting] = useState(false);
   const [countdownValue, setCountdownValue] = useState(3);
 
   const [game, setGame] = useState(() => new Chess());
+  const gameRef = useRef(game);
+  gameRef.current = game;
   const [gameStatus, setGameStatus] = useState('RED TURN');
   // 'w' | 'b' when that side's clock hit zero — the board position alone
   // doesn't know the game ended on time.
   const [timeoutLoser, setTimeoutLoser] = useState(null);
+  // Games ended by the players rather than on the board:
+  // { type: 'resign', loser: 'w' | 'b' } or { type: 'draw' } (agreed).
+  const [manualEnd, setManualEnd] = useState(null);
+  // Things worth recording that aren't moves (resignation, draw offers),
+  // shown under the scoresheet: [{ ply, text }].
+  const [matchNotes, setMatchNotes] = useState([]);
+  // 1v1 only: the colour that offered a draw and is waiting for an answer.
+  const [pendingDrawOffer, setPendingDrawOffer] = useState(null);
   const [botThinking, setBotThinking] = useState(false);
 
   // Remaining clock time in (fractional) seconds.
@@ -140,9 +169,19 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   const [pendingPromotion, setPendingPromotion] = useState(null);
   // Tap-to-move: the square of the piece the player has picked up.
   const [selectedSquare, setSelectedSquare] = useState(null);
-  // True for the moment between checkmate and the GAME OVER modal
+  // True for the moment between checkmate and the game-over bar
   // (drives the CHECKMATE! banner + board shake).
   const [checkmateFx, setCheckmateFx] = useState(false);
+
+  // Hints (bot matches on EASY / NORMAL): the suggested move, how many
+  // were used this game, and whether one is being worked out right now.
+  const [hint, setHint] = useState(null); // { from, to }
+  const [hintsUsed, setHintsUsed] = useState(0);
+  const [hintLoading, setHintLoading] = useState(false);
+
+  // Post-game review: which position is on the board (number of moves
+  // played, 0 = start), or null when showing the live game.
+  const [reviewPly, setReviewPly] = useState(null);
 
   // Redo stack: the later game states that were undone. (Undo needs no
   // stack of its own — see previousPosition.) Every Chess instance is
@@ -150,12 +189,22 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // stored and restored directly.
   const [future, setFuture] = useState([]);
 
-  const isGameOver = !!timeoutLoser || game.isGameOver();
+  const time = useMemo(() => parseTimeMode(timeMode), [timeMode]);
+  const botColor = gameMode === 'bot' ? opposite(playerColor) : null;
+  const isGameOver = !!timeoutLoser || !!manualEnd || game.isGameOver();
+
+  // 'w' | 'b' for a decisive game, null for a draw or a game in progress.
+  const winner = useMemo(() => {
+    if (manualEnd) return manualEnd.type === 'resign' ? opposite(manualEnd.loser) : null;
+    if (timeoutLoser) return hasMatingMaterial(game, opposite(timeoutLoser)) ? opposite(timeoutLoser) : null;
+    return game.isCheckmate() ? opposite(game.turn()) : null;
+  }, [game, manualEnd, timeoutLoser]);
 
   // ── MOVE NOTATION / SCORESHEET ──
   // Derived straight from the game's own move list, so it is always in sync
   // after moves, undo, redo and loading.
   const verboseHistory = useMemo(() => game.history({ verbose: true }), [game]);
+  const totalPlies = verboseHistory.length;
 
   const moveHistory = useMemo(() => {
     const moves = verboseHistory;
@@ -199,14 +248,40 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     return last ? last.black || last.white : null;
   }, [moveHistory]);
 
+  // "RED (P1 / YOU)", "BLUE (P2 / CPU)", "RED (P1)" ...
   function sideLabel(color) {
-    if (color === 'w') return gameMode === 'bot' ? 'RED (P1 / YOU)' : 'RED (P1)';
-    return gameMode === 'bot' ? 'BLUE (P2 / CPU)' : 'BLUE (P2)';
+    const base = color === 'w' ? 'RED (P1' : 'BLUE (P2';
+    if (gameMode !== 'bot') return `${base})`;
+    return `${base} / ${color === playerColor ? 'YOU' : 'CPU'})`;
+  }
+
+  function addNote(text) {
+    setMatchNotes((prev) => [...prev, { ply: totalPlies, text }]);
+  }
+
+  // Everything a save slot / the auto-saved session needs to restore a match.
+  function buildSaveData() {
+    return {
+      pgn: game.pgn(),
+      fen: game.fen(),
+      gameMode,
+      difficulty,
+      timeMode,
+      gameStatus,
+      whiteTime,
+      blackTime,
+      timeoutLoser,
+      playerColor,
+      manualEnd,
+      matchNotes,
+      hintsUsed,
+    };
   }
 
   // Loads a save slot / session into the live game state.
   function loadMatchState(save) {
     const loadedGame = restoreGame(save);
+    const ended = !!save.timeoutLoser || !!save.manualEnd || loadedGame.isGameOver();
     moveTokenRef.current++;
     clearAnimations();
     setCheckmateFx(false);
@@ -214,17 +289,25 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setGameMode(save.gameMode);
     setDifficulty(save.difficulty);
     setTimeMode(save.timeMode);
+    setPlayerColor(save.playerColor === 'b' ? 'b' : 'w'); // older saves: the player was always RED
     setGameStatus(save.gameStatus);
     setWhiteTime(save.whiteTime);
     setBlackTime(save.blackTime);
     setTimeoutLoser(save.timeoutLoser || null);
-    setKingCheckedAlert(loadedGame.inCheck() && !loadedGame.isGameOver());
+    setManualEnd(save.manualEnd || null);
+    setMatchNotes(Array.isArray(save.matchNotes) ? save.matchNotes : []);
+    setHintsUsed(Number.isFinite(save.hintsUsed) ? save.hintsUsed : 0);
+    setHint(null);
+    setHintLoading(false);
+    setReviewPly(null);
+    setPendingDrawOffer(null);
+    setKingCheckedAlert(loadedGame.inCheck() && !ended);
     setHiddenSquare(null);
     setIsAnimatingMove(false);
     setPendingPromotion(null);
     // (Undo needs no reset: it reads the moves that came back with the PGN.)
     setFuture([]);
-    setActiveModal(save.timeoutLoser || loadedGame.isGameOver() ? 'game_over' : null);
+    setActiveModal(null);
     setGameStarted(true);
   }
 
@@ -245,20 +328,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // clock tick: we save after each move, every few seconds, and when the
   // tab is hidden / closed.
   const buildSessionRef = useRef(null);
-  buildSessionRef.current = gameStarted
-    ? () => ({
-        pgn: game.pgn(),
-        fen: game.fen(),
-        gameMode,
-        difficulty,
-        timeMode,
-        gameStatus,
-        whiteTime,
-        blackTime,
-        timeoutLoser,
-        gameStarted,
-      })
-    : null;
+  buildSessionRef.current = gameStarted ? () => ({ ...buildSaveData(), gameStarted }) : null;
 
   const persistSession = useCallback(() => {
     if (!buildSessionRef.current) return;
@@ -271,7 +341,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
 
   useEffect(() => {
     if (gameStarted) persistSession();
-  }, [game, gameStarted, gameStatus, timeoutLoser, persistSession]);
+  }, [game, gameStarted, gameStatus, timeoutLoser, manualEnd, matchNotes, hintsUsed, persistSession]);
 
   useEffect(() => {
     if (!gameStarted) return;
@@ -352,7 +422,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // capture animation is on screen. Elapsed time is measured with
   // Date.now(), so moving quickly can't skip the partial second a plain
   // 1-second setInterval would drop.
-  const clockRunning = gameStarted && timeMode !== 'none' && !isGameOver
+  const clockRunning = gameStarted && time.timed && !isGameOver
     && !isStarting && !activeModal && !pendingPromotion && !isAnimatingMove;
   const sideToMove = game.turn();
 
@@ -375,19 +445,18 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
 
   // ── TIME-OUT DETECTION ──
   useEffect(() => {
-    if (!gameStarted || timeMode === 'none' || isGameOver) return;
+    if (!gameStarted || !time.timed || isGameOver) return;
     const loser = whiteTime <= 0 ? 'w' : blackTime <= 0 ? 'b' : null;
     if (!loser) return;
 
-    const winner = loser === 'w' ? 'b' : 'w';
+    const timeWinner = opposite(loser);
     setTimeoutLoser(loser);
     setKingCheckedAlert(false);
     setGameStatus(
-      hasMatingMaterial(game, winner)
-        ? `TIME OUT - WINNER: ${sideLabel(winner)}`
+      hasMatingMaterial(game, timeWinner)
+        ? `TIME OUT - WINNER: ${sideLabel(timeWinner)}`
         : 'DRAW - TIME OUT (NO MATING MATERIAL)'
     );
-    setActiveModal('game_over');
     audio.play('success');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-check when a clock changes
   }, [whiteTime, blackTime]);
@@ -395,26 +464,23 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   function updateStatus(currentGame) {
     if (currentGame.isCheckmate()) {
       // The side to move is the one that got mated, so the OTHER side won.
-      const winner = currentGame.turn() === 'w' ? 'b' : 'w';
       setKingCheckedAlert(false);
-      setGameStatus(`WINNER: ${sideLabel(winner)}`);
+      setGameStatus(`WINNER: ${sideLabel(opposite(currentGame.turn()))}`);
       setCheckmateFx(true);
       audio.play('success');
       const token = moveTokenRef.current;
       setTimeout(() => {
         if (token !== moveTokenRef.current) return;
         setCheckmateFx(false);
-        setActiveModal('game_over');
       }, CHECKMATE_MODAL_DELAY_MS);
     } else if (currentGame.isDraw()) {
       setKingCheckedAlert(false);
       setGameStatus(`DRAW - ${drawReason(currentGame)}`);
-      setActiveModal('game_over');
     } else {
       const inCheck = currentGame.inCheck();
       setKingCheckedAlert(inCheck);
       if (inCheck) audio.play('check_alert');
-      setGameStatus(`${currentGame.turn() === 'w' ? 'RED' : 'BLUE'} TURN`);
+      setGameStatus(`${COLOR_NAME[currentGame.turn()]} TURN`);
     }
   }
 
@@ -441,6 +507,10 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
       settled = true;
       setFuture([]);
       setGame(next);
+      // Increment: the mover gets time back for completing the move.
+      if (time.timed && time.increment > 0) {
+        (played.color === 'w' ? setWhiteTime : setBlackTime)((t) => t + time.increment);
+      }
       updateStatus(next);
       setHiddenSquare(null);
       setIsAnimatingMove(false);
@@ -462,7 +532,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
       audio.play(played.captured ? 'thunder' : 'click');
       commit();
       const losingKingSquare = findKingSquare(next, next.turn());
-      if (losingKingSquare) {
+      if (losingKingSquare && animations) {
         setTimeout(() => {
           if (token !== moveTokenRef.current) return;
           triggerCaptureAnimation(losingKingSquare, null, 'cage');
@@ -472,7 +542,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
       return true;
     }
 
-    if (played.captured) {
+    if (played.captured && animations) {
       // En passant removes a pawn that is NOT on the destination square.
       const capturedSquare = played.flags.includes('e') ? played.to[0] + played.from[1] : played.to;
       animateCapture(capturedSquare);
@@ -515,8 +585,10 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // ── CPU OPPONENT ──
   // The search runs in a Web Worker (see src/bot), so the UI stays smooth
   // even while HARD is thinking. Pausing, undoing or restarting cancels it.
+  // The CPU plays whichever colour the human didn't take — so when the
+  // human is BLUE, the CPU makes the first move of the game.
   useEffect(() => {
-    const botToMove = gameStarted && gameMode === 'bot' && game.turn() === 'b' && !isGameOver
+    const botToMove = gameStarted && gameMode === 'bot' && game.turn() === botColor && !isGameOver
       && !isStarting && !activeModal && !pendingPromotion && !isAnimatingMove;
     if (!botToMove) return;
 
@@ -536,10 +608,12 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
       setBotThinking(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- makeAMove reads the same `game` listed here
-  }, [game, gameMode, difficulty, gameStarted, isGameOver, isStarting, activeModal, pendingPromotion, isAnimatingMove]);
+  }, [game, gameMode, botColor, difficulty, gameStarted, isGameOver, isStarting, activeModal, pendingPromotion, isAnimatingMove]);
 
+  const isReviewing = reviewPly !== null;
   const playerCanMove = gameStarted && !isGameOver && !isAnimatingMove && !pendingPromotion
-    && !activeModal && !isStarting && !checkmateFx && !(gameMode === 'bot' && game.turn() === 'b');
+    && !activeModal && !isStarting && !checkmateFx && !isReviewing
+    && !(gameMode === 'bot' && game.turn() === botColor);
 
   function onDrop(sourceSquare, targetSquare) {
     setSelectedSquare(null);
@@ -572,21 +646,12 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     if (playerCanMove) setSelectedSquare(sourceSquare);
   }
 
-  // Any new position (move, undo, load...) drops the current selection.
+  // Any new position (move, undo, load...) drops the current selection
+  // and the hint that was drawn for the old position.
   useEffect(() => {
     setSelectedSquare(null);
+    setHint(null);
   }, [game]);
-
-  // Stable identities for the memoized board (see GameBoardScreen).
-  const handlersRef = useRef(null);
-  handlersRef.current = { onDrop, onSquareClick, onPieceDragBegin };
-  const stableOnDrop = useCallback((from, to) => handlersRef.current.onDrop(from, to), []);
-  const stableOnSquareClick = useCallback((sq) => handlersRef.current.onSquareClick(sq), []);
-  const stableOnPieceDragBegin = useCallback((p, sq) => handlersRef.current.onPieceDragBegin(p, sq), []);
-  const isDraggablePiece = useCallback(
-    ({ piece }) => piece[0] === sideToMove && (gameMode !== 'bot' || sideToMove === 'w'),
-    [sideToMove, gameMode]
-  );
 
   // ── UNDO / REDO ──
   // In a bot match, steps back/forward past the CPU's reply so it's the
@@ -599,13 +664,14 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setHiddenSquare(null);
     setIsAnimatingMove(false);
     setPendingPromotion(null);
+    setReviewPly(null);
     setGame(target);
     updateStatus(target);
-    if (!target.isGameOver()) setActiveModal(null);
+    setActiveModal(null);
     audio.play('click');
   }
 
-  const isBotTurn = (g) => gameMode === 'bot' && g.turn() === 'b';
+  const isBotTurn = (g) => gameMode === 'bot' && g.turn() === botColor;
 
   function undoMove() {
     if (!canUndo) return;
@@ -628,9 +694,152 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     restoreSnapshot(target, futureStack);
   }
 
-  // A time-out can't be undone (the clock would be stuck at 0:00).
-  const canUndo = verboseHistory.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
-  const canRedo = future.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
+  // A time-out, resignation or agreed draw can't be undone. Against the
+  // CPU there must be a move of YOURS to take back (as BLUE, the CPU's
+  // opening move alone is not undoable).
+  const busy = isAnimatingMove || !!pendingPromotion || isStarting || !!timeoutLoser || !!manualEnd;
+  const canUndo = !busy && totalPlies > 0
+    && (gameMode !== 'bot' || verboseHistory.some((m) => m.color === playerColor));
+  const canRedo = !busy && future.length > 0;
+
+  // ── RESIGN / DRAW ──
+  function endManually(end, status, note) {
+    moveTokenRef.current++;
+    clearAnimations();
+    setHiddenSquare(null);
+    setIsAnimatingMove(false);
+    setPendingPromotion(null);
+    setPendingDrawOffer(null);
+    setKingCheckedAlert(false);
+    setManualEnd(end);
+    setGameStatus(status);
+    addNote(note);
+    setActiveModal(null);
+    audio.play('success');
+  }
+
+  const canEndManually = gameStarted && !isGameOver && !isStarting && !isAnimatingMove && !pendingPromotion;
+
+  // Against the CPU the human resigns; in a local match, the side to move.
+  function resign() {
+    if (!canEndManually) return false;
+    const loser = gameMode === 'bot' ? playerColor : game.turn();
+    endManually(
+      { type: 'resign', loser },
+      `RESIGNED - WINNER: ${sideLabel(opposite(loser))}`,
+      `${COLOR_NAME[loser]} RESIGNED`
+    );
+    return true;
+  }
+
+  // Returns 'accepted' | 'declined' (CPU answers at once), 'pending' (the
+  // other human is being asked) or null when a draw can't be offered now.
+  function offerDraw() {
+    if (!canEndManually) return null;
+    if (gameMode === 'bot') {
+      if (botAcceptsDraw(evaluatePosition(game.fen()), totalPlies)) {
+        endManually({ type: 'draw' }, 'DRAW - BY AGREEMENT', 'DRAW AGREED');
+        notify('CPU ACCEPTED THE DRAW', 'success');
+        return 'accepted';
+      }
+      addNote(`${COLOR_NAME[playerColor]} OFFERED A DRAW - DECLINED`);
+      setActiveModal(null);
+      notify('CPU DECLINED THE DRAW', 'alert');
+      return 'declined';
+    }
+    setPendingDrawOffer(game.turn());
+    setActiveModal('draw_offer');
+    return 'pending';
+  }
+
+  // 1v1: the other player's answer to a pending offer.
+  function respondToDraw(accept) {
+    if (!pendingDrawOffer) return;
+    if (accept) {
+      endManually({ type: 'draw' }, 'DRAW - BY AGREEMENT', 'DRAW AGREED');
+      return;
+    }
+    addNote(`${COLOR_NAME[pendingDrawOffer]} OFFERED A DRAW - DECLINED`);
+    setPendingDrawOffer(null);
+    setActiveModal(null);
+    notify('DRAW OFFER DECLINED', 'alert');
+  }
+
+  // ── HINTS ──
+  const hintLimit = gameMode === 'bot' ? HINT_LIMITS[difficulty] || 0 : 0;
+  const hintsLeft = Math.max(0, hintLimit - hintsUsed);
+  const canHint = playerCanMove && hintsLeft > 0 && !hintLoading && !hint;
+
+  // Asks the engine (at full strength, search only) for the best move in
+  // this position and highlights it. A hint only counts once it is shown.
+  function requestHint() {
+    if (!canHint) return;
+    const forGame = game;
+    setHintLoading(true);
+    requestBotMove(game.fen(), 'hard', game.pgn(), { useBook: false }).then((move) => {
+      setHintLoading(false);
+      if (!move || gameRef.current !== forGame) return; // the position changed meanwhile
+      setHint({ from: move.from, to: move.to });
+      setHintsUsed((n) => n + 1);
+      audio.play('click');
+    });
+  }
+
+  // ── POST-GAME REVIEW ──
+  // Once the game is over the board can step through every position.
+  function jumpToPly(ply) {
+    if (!isGameOver || Number.isNaN(ply)) return;
+    setReviewPly(clamp(Math.round(ply), 0, totalPlies));
+  }
+
+  function startReview() {
+    jumpToPly(totalPlies);
+  }
+
+  function stepReview(delta) {
+    if (!isReviewing) return;
+    setReviewPly((p) => clamp((p ?? totalPlies) + delta, 0, totalPlies));
+  }
+
+  function exitReview() {
+    setReviewPly(null);
+  }
+
+  const reviewFen = !isReviewing
+    ? null
+    : reviewPly === 0
+      ? (verboseHistory[0] ? verboseHistory[0].before : game.fen())
+      : verboseHistory[reviewPly - 1].after;
+  const reviewGame = useMemo(() => (reviewFen ? new Chess(reviewFen) : null), [reviewFen]);
+
+  // Stable identities for the memoized board (see GameBoardScreen).
+  const handlersRef = useRef(null);
+  handlersRef.current = { onDrop, onSquareClick, onPieceDragBegin, stepReview, jumpToPly, exitReview };
+  const stableOnDrop = useCallback((from, to) => handlersRef.current.onDrop(from, to), []);
+  const stableOnSquareClick = useCallback((sq) => handlersRef.current.onSquareClick(sq), []);
+  const stableOnPieceDragBegin = useCallback((p, sq) => handlersRef.current.onPieceDragBegin(p, sq), []);
+  const stableJumpToPly = useCallback((ply) => handlersRef.current.jumpToPly(ply), []);
+  const isDraggablePiece = useCallback(
+    ({ piece }) => !isReviewing && piece[0] === sideToMove && (gameMode !== 'bot' || sideToMove === playerColor),
+    [sideToMove, gameMode, playerColor, isReviewing]
+  );
+
+  // ← / → step through the review, Home / End jump to the ends, Esc leaves.
+  useEffect(() => {
+    if (!isReviewing || activeModal) return;
+    const onKey = (e) => {
+      const h = handlersRef.current;
+      if (e.key === 'ArrowLeft') h.stepReview(-1);
+      else if (e.key === 'ArrowRight') h.stepReview(1);
+      else if (e.key === 'Home') h.jumpToPly(0);
+      else if (e.key === 'End') h.jumpToPly(Infinity);
+      else if (e.key === 'Escape') h.exitReview();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isReviewing, activeModal]);
 
   // ── BOARD RESET + 3-2-1 COUNTDOWN (shared by START and REPLAY) ──
   function resetBoard() {
@@ -641,15 +850,21 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setGame(new Chess());
     setGameStatus('RED TURN');
     setTimeoutLoser(null);
+    setManualEnd(null);
+    setMatchNotes([]);
+    setPendingDrawOffer(null);
+    setHint(null);
+    setHintsUsed(0);
+    setHintLoading(false);
+    setReviewPly(null);
     setKingCheckedAlert(false);
     setHiddenSquare(null);
     setIsAnimatingMove(false);
     setPendingPromotion(null);
     setFuture([]);
-    if (timeMode && timeMode !== 'none') {
-      const seconds = parseFloat(timeMode) * 60;
-      setWhiteTime(seconds);
-      setBlackTime(seconds);
+    if (time.timed) {
+      setWhiteTime(time.seconds);
+      setBlackTime(time.seconds);
     }
   }
 
@@ -670,17 +885,32 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     ];
   }
 
+  function setColorChoice(choice) {
+    setColorChoiceState(choice);
+    saveColorChoice(choice);
+  }
+
+  // Decides who is who for the match about to start. RANDOM is re-rolled
+  // on every new match and rematch.
+  function assignColors() {
+    setPlayerColor(gameMode === 'bot' ? resolveColor(colorChoice) : 'w');
+  }
+
   function restartMatch() {
+    if (isStarting) return;
     audio.triggerInteractiveAudioContext();
     audio.play('success');
     setActiveModal(null);
+    assignColors();
     runProceduralCountdown();
   }
 
   function startGame() {
+    if (isStarting) return;
     if (!gameMode || (gameMode === 'bot' && !difficulty) || !timeMode) return;
     audio.triggerInteractiveAudioContext();
     audio.play('success');
+    assignColors();
     runProceduralCountdown(() => setGameStarted(true));
   }
 
@@ -697,34 +927,49 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setGameStarted(false);
   }
 
-  const lastMoveSquares = verboseHistory.length ? verboseHistory[verboseHistory.length - 1] : null;
-  const checkedKingSquare = game.inCheck() ? findKingSquare(game, game.turn()) : null;
+  // Full PGN text of the current game, with header tags, for copy / download.
+  function exportPgn() {
+    return buildPgn({ game, gameMode, difficulty, playerColor, isGameOver, winner });
+  }
+
+  const shownMove = isReviewing
+    ? (reviewPly > 0 ? verboseHistory[reviewPly - 1] : null)
+    : (totalPlies ? verboseHistory[totalPlies - 1] : null);
+  const shownGame = reviewGame || game;
+  const checkedKingSquare = shownGame.inCheck() ? findKingSquare(shownGame, shownGame.turn()) : null;
 
   const customSquareStyles = useMemo(() => {
     const styles = {};
     const add = (sq, fx) => {
       styles[sq] = { ...styles[sq], ...fx };
     };
-    if (lastMoveSquares) {
-      add(lastMoveSquares.from, SQUARE_FX.lastMove);
-      add(lastMoveSquares.to, SQUARE_FX.lastMove);
+    if (shownMove) {
+      add(shownMove.from, SQUARE_FX.lastMove);
+      add(shownMove.to, SQUARE_FX.lastMove);
     }
     if (checkedKingSquare) add(checkedKingSquare, SQUARE_FX.check);
     if (selectedSquare) add(selectedSquare, SQUARE_FX.selected);
     for (const m of legalTargets) add(m.to, m.captured ? SQUARE_FX.captureRing : SQUARE_FX.moveDot);
+    // A hint is advice for the move about to be played: gone once the game ends.
+    if (hint && !isGameOver) {
+      add(hint.from, SQUARE_FX.hint);
+      add(hint.to, SQUARE_FX.hint);
+    }
     return styles;
-  }, [lastMoveSquares, checkedKingSquare, selectedSquare, legalTargets]);
+  }, [shownMove, checkedKingSquare, selectedSquare, legalTargets, hint, isGameOver]);
 
   // Board position shown to react-chessboard: the real FEN, except that a
-  // piece being eliminated is lifted off (its sprite lives on the canvas).
+  // piece being eliminated is lifted off (its sprite lives on the canvas),
+  // and during a review it is the position being looked at.
   const displayPosition = useMemo(() => {
+    if (reviewFen) return reviewFen;
     if (!hiddenSquare) return game.fen();
     const position = {};
     for (const row of game.board()) {
       for (const p of row) if (p && p.square !== hiddenSquare) position[p.square] = p.color + p.type.toUpperCase();
     }
     return position;
-  }, [game, hiddenSquare]);
+  }, [game, hiddenSquare, reviewFen]);
 
   return {
     boardWrapperRef,
@@ -736,13 +981,24 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setDifficulty,
     timeMode,
     setTimeMode,
+    colorChoice,
+    setColorChoice,
+    playerColor,
+    botColor,
+    boardOrientation: gameMode === 'bot' && playerColor === 'b' ? 'black' : 'white',
     gameStarted,
     isStarting,
     countdownValue,
     game,
     gameStatus,
     isGameOver,
+    winner,
+    // The game-over bar waits for the checkmate banner to finish.
+    showGameOver: gameStarted && isGameOver && !checkmateFx && !isStarting,
     timeoutLoser,
+    manualEnd,
+    matchNotes,
+    pendingDrawOffer,
     botThinking,
     whiteTime,
     blackTime,
@@ -755,6 +1011,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     displayPosition,
     moveHistory,
     lastMove,
+    totalPlies,
     canUndo,
     canRedo,
     undoMove,
@@ -767,6 +1024,25 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     checkmateFx,
     handlePromotionSelection,
     cancelPromotion,
+    canEndManually,
+    resign,
+    offerDraw,
+    respondToDraw,
+    hint,
+    hintLimit,
+    hintsUsed,
+    hintsLeft,
+    hintLoading,
+    canHint,
+    requestHint,
+    isReviewing,
+    reviewPly,
+    startReview,
+    stepReview,
+    jumpToPly: stableJumpToPly,
+    exitReview,
+    exportPgn,
+    buildSaveData,
     startGame,
     restartMatch,
     quitMatch,

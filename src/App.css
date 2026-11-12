@@ -1620,8 +1620,8 @@ html, body {
     gap: 8px 10px;
   }
   .board-column > .board-frame { grid-column: 1; grid-row: 1 / span 3; padding: 9px; }
-  .board-column > .player-bar-b { grid-column: 2; grid-row: 1; }
-  .board-column > .player-bar-w { grid-column: 2; grid-row: 3; }
+  .board-column > .player-bar:first-child { grid-column: 2; grid-row: 1; }
+  .board-column > .player-bar:last-child { grid-column: 2; grid-row: 3; }
   .player-bar { flex-wrap: wrap; }
   .side-pixel-wrapper { flex: 0 1 240px; width: auto; max-height: calc(100dvh - 60px); }
 }
