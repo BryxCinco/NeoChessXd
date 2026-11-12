@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Shared saved-match card renderer — used by BOTH the compact wizard's
 // dedicated "LOAD GAME" step and the desktop always-visible save panel,

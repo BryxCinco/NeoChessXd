@@ -1,4 +1,3 @@
-import React from 'react';
 import { SavedMatchesList } from './SaveSlotCard';
 
 export function AudioToggleButton({ isMuted, onToggle }) {
