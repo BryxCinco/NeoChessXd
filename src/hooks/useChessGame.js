@@ -53,6 +53,18 @@ export function restoreGame(save) {
   return new Chess(save.fen);
 }
 
+// The position one move earlier, as a NEW game (the original is untouched),
+// or null at the start of the game. Undo is derived from the game's own
+// move list like this — instead of from a separate stack of snapshots — so
+// it keeps working after a save is loaded or the page is refreshed: the
+// moves come back with the PGN. (An old FEN-only save has no moves.)
+export function previousPosition(g) {
+  if (g.history().length === 0) return null;
+  const previous = cloneGame(g);
+  previous.undo();
+  return previous;
+}
+
 function findKingSquare(g, color) {
   for (const row of g.board()) {
     for (const p of row) {
@@ -132,10 +144,10 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // (drives the CHECKMATE! banner + board shake).
   const [checkmateFx, setCheckmateFx] = useState(false);
 
-  // Undo / redo stacks of earlier / later game states. Every Chess instance
-  // is treated as immutable (moves always go onto a clone), so they can be
+  // Redo stack: the later game states that were undone. (Undo needs no
+  // stack of its own — see previousPosition.) Every Chess instance is
+  // treated as immutable (moves always go onto a clone), so they can be
   // stored and restored directly.
-  const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
 
   const isGameOver = !!timeoutLoser || game.isGameOver();
@@ -210,7 +222,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setHiddenSquare(null);
     setIsAnimatingMove(false);
     setPendingPromotion(null);
-    setHistory([]);
+    // (Undo needs no reset: it reads the moves that came back with the PGN.)
     setFuture([]);
     setActiveModal(save.timeoutLoser || loadedGame.isGameOver() ? 'game_over' : null);
     setGameStarted(true);
@@ -422,13 +434,11 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     }
     if (!played) return false;
 
-    const base = game;
     const token = moveTokenRef.current;
     let settled = false;
     const commit = () => {
       if (settled || token !== moveTokenRef.current) return;
       settled = true;
-      setHistory((prev) => [...prev, base]);
       setFuture([]);
       setGame(next);
       updateStatus(next);
@@ -513,7 +523,7 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     let cancelled = false;
     setBotThinking(true);
     Promise.all([
-      requestBotMove(game.fen(), difficulty),
+      requestBotMove(game.fen(), difficulty, game.pgn()),
       new Promise((resolve) => setTimeout(resolve, BOT_MIN_THINK_MS)),
     ]).then(([move]) => {
       if (cancelled) return;
@@ -581,11 +591,10 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
   // ── UNDO / REDO ──
   // In a bot match, steps back/forward past the CPU's reply so it's the
   // player's turn again.
-  function restoreSnapshot(target, newHistory, newFuture) {
+  function restoreSnapshot(target, newFuture) {
     moveTokenRef.current++;
     clearAnimations();
     setCheckmateFx(false);
-    setHistory(newHistory);
     setFuture(newFuture);
     setHiddenSquare(null);
     setIsAnimatingMove(false);
@@ -600,30 +609,27 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
 
   function undoMove() {
     if (!canUndo) return;
-    const pastStack = [...history];
     const futureStack = [...future, game];
-    let target = pastStack.pop();
-    while (pastStack.length > 0 && isBotTurn(target)) {
+    let target = previousPosition(game);
+    while (isBotTurn(target)) {
+      const earlier = previousPosition(target);
+      if (!earlier) break;
       futureStack.push(target);
-      target = pastStack.pop();
+      target = earlier;
     }
-    restoreSnapshot(target, pastStack, futureStack);
+    restoreSnapshot(target, futureStack);
   }
 
   function redoMove() {
     if (!canRedo) return;
-    const pastStack = [...history, game];
     const futureStack = [...future];
     let target = futureStack.pop();
-    while (futureStack.length > 0 && isBotTurn(target)) {
-      pastStack.push(target);
-      target = futureStack.pop();
-    }
-    restoreSnapshot(target, pastStack, futureStack);
+    while (futureStack.length > 0 && isBotTurn(target)) target = futureStack.pop();
+    restoreSnapshot(target, futureStack);
   }
 
   // A time-out can't be undone (the clock would be stuck at 0:00).
-  const canUndo = history.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
+  const canUndo = verboseHistory.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
   const canRedo = future.length > 0 && !isAnimatingMove && !pendingPromotion && !isStarting && !timeoutLoser;
 
   // ── BOARD RESET + 3-2-1 COUNTDOWN (shared by START and REPLAY) ──
@@ -639,7 +645,6 @@ export function useChessGame({ audio, activeModal, setActiveModal }) {
     setHiddenSquare(null);
     setIsAnimatingMove(false);
     setPendingPromotion(null);
-    setHistory([]);
     setFuture([]);
     if (timeMode && timeMode !== 'none') {
       const seconds = parseFloat(timeMode) * 60;

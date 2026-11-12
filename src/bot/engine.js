@@ -11,6 +11,11 @@ import { Chess } from 'chess.js';
 
 const VALUE = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
 const MATE = 100000;
+// When the bot is clearly ahead (static eval, centipawns) a draw is scored
+// as if it cost this much, so it won't shuffle into a repetition / 50-move
+// draw while winning. When it is behind, a draw scores 0 and is welcome.
+const WINNING_MARGIN = 100;
+const CONTEMPT = 150;
 
 // Piece-square tables, white's point of view, row 0 = rank 8 (same row
 // order as chess.js' 0x88 board, so `sq >> 4` indexes them directly).
@@ -126,6 +131,38 @@ class Searcher {
     this.deadline = 0;
     this.nodes = 0;
     this.aborted = false;
+    // Repetition detection piggybacks on chess.js' own Zobrist position
+    // counter (the one isThreefoldRepetition() reads). When the game was
+    // loaded from a PGN it already holds every position played so far.
+    this.trackRepetition = typeof game._incPositionCount === 'function'
+      && typeof game._decPositionCount === 'function'
+      && typeof game._getPositionCount === 'function'
+      && game._hash !== undefined;
+    this.contempt = 0;
+  }
+
+  // _makeMove / _undoMove plus the position counter the public move() keeps.
+  make(m) {
+    this.g._makeMove(m);
+    if (this.trackRepetition) this.g._incPositionCount();
+  }
+
+  unmake() {
+    if (this.trackRepetition) this.g._decPositionCount(this.g._hash);
+    this.g._undoMove();
+  }
+
+  // True when the current position already occurred earlier — in the real
+  // game or higher up this search line. One earlier occurrence is enough:
+  // whoever wants the draw could simply repeat again.
+  isRepetition() {
+    return this.trackRepetition && this.g._getPositionCount(this.g._hash) >= 2;
+  }
+
+  // Value of a drawn position for the side to move at `ply`
+  // (even ply = the bot itself, odd ply = its opponent).
+  drawScore(ply) {
+    return ply & 1 ? this.contempt : -this.contempt;
   }
 
   pieceScore(type, sq, color) {
@@ -192,9 +229,9 @@ class Searcher {
     const captures = this.orderMoves(this.g._moves().filter((m) => m.captured || m.promotion));
     for (const m of captures) {
       const delta = this.moveDelta(m);
-      this.g._makeMove(m);
+      this.make(m);
       const score = -this.quiesce(-beta, -alpha, -(standPat + delta), qDepth - 1);
-      this.g._undoMove();
+      this.unmake();
       if (this.aborted) return 0;
       if (score >= beta) return score;
       if (score > alpha) alpha = score;
@@ -207,11 +244,14 @@ class Searcher {
     this.checkTime();
     if (this.aborted) return 0;
 
+    // Draw by repetition: checked first, a repeated position can't be mate.
+    if (this.isRepetition()) return this.drawScore(ply);
+
     const moves = this.g._moves();
     if (moves.length === 0) {
       return this.g._isKingAttacked(this.g._turn) ? -MATE + ply : 0;
     }
-    if (this.g._halfMoves >= 100) return 0;
+    if (this.g._halfMoves >= 100) return this.drawScore(ply); // 50-move rule
     if (depth <= 0) {
       return this.profile.quiescence ? this.quiesce(alpha, beta, evalUs, 6) : evalUs;
     }
@@ -219,9 +259,9 @@ class Searcher {
     let best = -Infinity;
     for (const m of this.orderMoves(moves)) {
       const delta = this.moveDelta(m);
-      this.g._makeMove(m);
+      this.make(m);
       const score = -this.negamax(depth - 1, -beta, -alpha, -(evalUs + delta), ply + 1);
-      this.g._undoMove();
+      this.unmake();
       if (this.aborted) return 0;
       if (score > best) best = score;
       if (score > alpha) alpha = score;
@@ -238,6 +278,7 @@ class Searcher {
     this.deadline = Date.now() + timeMs;
     const sign = this.g._turn === 'w' ? 1 : -1;
     const rootEval = sign * this.evaluateBoard();
+    this.contempt = rootEval >= WINNING_MARGIN ? CONTEMPT : 0;
 
     let rootMoves = this.orderMoves(this.g._moves());
     if (rootMoves.length === 0) return null;
@@ -253,9 +294,9 @@ class Searcher {
         // Shift the window by this move's jitter, otherwise a fail-low
         // bound plus noise can look better than the real best move.
         const j = jitter.get(m);
-        this.g._makeMove(m);
+        this.make(m);
         const score = -this.negamax(depth - 1, -Infinity, -(alpha - j), -(rootEval + delta), 1) + j;
-        this.g._undoMove();
+        this.unmake();
         if (this.aborted) break;
         scored.push([m, score]);
         if (score > alpha) {
@@ -288,10 +329,41 @@ function hasInternals(game) {
 
 const toAlgebraic = (sq) => 'abcdefgh'[sq & 7] + (8 - (sq >> 4));
 
-// Public entry point: returns { from, to, promotion } or null.
-export function findBestMove(fen, difficulty = 'medium') {
-  const profile = DIFFICULTY[difficulty] || DIFFICULTY.medium;
+// Builds the position to search. With a PGN the game keeps its full move
+// history, which is what lets the search see repetitions of positions that
+// were already played; a bare FEN knows nothing about the past.
+function loadPosition(fen, pgn) {
+  if (pgn) {
+    try {
+      const game = new Chess();
+      game.loadPgn(pgn);
+      if (!fen || game.fen() === fen) return game;
+    } catch {
+      // unreadable PGN — fall back to the FEN
+    }
+  }
+  return new Chess(fen);
+}
+
+// Static evaluation in centipawns from the SIDE TO MOVE's point of view
+// (positive = the side to move is ahead).
+export function evaluatePosition(fen) {
   const game = new Chess(fen);
+  let white = 0;
+  if (hasInternals(game)) {
+    white = new Searcher(game, DIFFICULTY.hard).evaluateBoard();
+  } else {
+    for (const row of game.board()) for (const p of row) if (p) white += (p.color === 'w' ? 1 : -1) * VALUE[p.type];
+  }
+  return game.turn() === 'w' ? white : -white;
+}
+
+// Public entry point: returns { from, to, promotion } or null.
+// `pgn` (optional) is the game so far; pass it so the bot can avoid — or,
+// when it is losing, aim for — a draw by repetition.
+export function findBestMove(fen, difficulty = 'medium', pgn = null) {
+  const profile = DIFFICULTY[difficulty] || DIFFICULTY.medium;
+  const game = loadPosition(fen, pgn);
   const legal = game.moves({ verbose: true });
   if (legal.length === 0) return null;
 

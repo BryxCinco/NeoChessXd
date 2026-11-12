@@ -1,110 +1,186 @@
 import { PieceSprite } from '../pixelPieces';
+import { PixelModal } from './PixelModal';
+import { MAX_SAVE_SLOTS } from '../hooks/useSavedMatches';
 
-// Renders whichever modal body matches `activeModal`. All the pause-menu
-// actions live here so App.jsx just wires up the handful of callbacks.
+// Renders whichever modal matches `activeModal`, all built on <PixelModal>.
+// The pause-menu actions live here so App.jsx just wires up the callbacks.
 export function GameModals({
   activeModal,
   gameStatus,
   isAnimatingMove,
   pendingPromotion,
+  pendingLoadMatch,
   play,
   onClose,
   onOpenQuitConfirm,
   onRestart,
   onSave,
+  onConfirmOverwrite,
+  onConfirmLoad,
   onConfirmQuit,
   onConfirmDelete,
 }) {
   if (!activeModal) return null;
-  const disabled = isAnimatingMove || pendingPromotion;
-  // 'w' / 'b' when someone won (checkmate or time-out), null for a draw.
-  const winnerColor = /WINNER: RED/.test(gameStatus) ? 'w' : /WINNER: BLUE/.test(gameStatus) ? 'b' : null;
+  const disabled = !!(isAnimatingMove || pendingPromotion);
+  const close = () => { play('click'); onClose(); };
 
-  return (
-    <div className="retro-modal-overlay">
-      <div className="bento-pixel retro-modal-body" style={activeModal === 'game_over' ? { borderColor: '#ffcc00' } : undefined}>
-        {activeModal === 'pause_menu' && (
-          <>
-            <h2 className="modal-title-pixel">[PAUSE MENU]</h2>
-            <div className="btn-group-pixel pause-menu-grid">
-              <button className="pixel-action-btn action-continue" onClick={() => { play('click'); onClose(); }}>
-                ▶ CONTINUE
-              </button>
-              <button className="pixel-action-btn action-restart" onClick={onRestart} disabled={disabled}>
-                ↺ RESTART
-              </button>
-              <button className="pixel-action-btn action-save" onClick={onSave} disabled={disabled}>
-                💾 SAVE GAME
-              </button>
-              <button
-                className="pixel-action-btn action-forfeit"
-                onClick={() => { play('click'); onOpenQuitConfirm(); }}
-                disabled={disabled}
-              >
-                ⏻ OUT
-              </button>
-            </div>
-          </>
-        )}
-
-        {activeModal === 'save_success' && (
-          <>
-            <h2 className="modal-title-pixel">[SYSTEM UPDATE]</h2>
-            <p className="modal-text-pixel">STATE SAVED SLOTS UPDATED SUCCESSFUL!</p>
-            <button className="pixel-action-btn action-save" onClick={() => { play('click'); onClose(); }}>
-              OK (CONTINUE)
+  switch (activeModal) {
+    case 'pause_menu':
+      return (
+        <PixelModal title="[PAUSE MENU]" onCancel={close}>
+          <div className="btn-group-pixel pause-menu-grid">
+            <button type="button" className="pixel-action-btn action-continue" onClick={close}>
+              ▶ CONTINUE
             </button>
-          </>
-        )}
+            <button type="button" className="pixel-action-btn action-restart" onClick={onRestart} disabled={disabled}>
+              ↺ RESTART
+            </button>
+            <button type="button" className="pixel-action-btn action-save" onClick={() => onSave()} disabled={disabled}>
+              💾 SAVE GAME
+            </button>
+            <button
+              type="button"
+              className="pixel-action-btn action-forfeit"
+              onClick={() => { play('click'); onOpenQuitConfirm(); }}
+              disabled={disabled}
+            >
+              ⏻ OUT
+            </button>
+          </div>
+        </PixelModal>
+      );
 
-        {activeModal === 'confirm_quit' && (
-          <>
-            <h2 className="modal-title-pixel alert-title">[WARN MODULE]</h2>
-            <p className="modal-text-pixel">RESET EMULATOR BACK TO MENU?</p>
-            <div className="btn-group-pixel">
-              <button className="diff-hard active" onClick={onConfirmQuit}>YES (RESET)</button>
-              <button className="cancel-modal-btn" onClick={() => { play('click'); onClose(); }}>NO (CANCEL)</button>
-            </div>
-          </>
-        )}
+    case 'save_success':
+      return (
+        <PixelModal
+          title="[SYSTEM UPDATE]"
+          message="GAME SAVED SUCCESSFULLY!"
+          confirmLabel="OK (CONTINUE)"
+          onConfirm={close}
+          onCancel={close}
+        />
+      );
 
-        {activeModal === 'confirm_delete' && (
-          <>
-            <h2 className="modal-title-pixel alert-title">[WARN MODULE]</h2>
-            <p className="modal-text-pixel">DELETE THIS DATA SLOT PERMANENTLY?</p>
-            <div className="btn-group-pixel">
-              <button className="diff-hard active" onClick={onConfirmDelete}>YES (ERASE)</button>
-              <button className="cancel-modal-btn" onClick={() => { play('click'); onClose(); }}>NO (KEEP)</button>
-            </div>
-          </>
-        )}
+    case 'save_failed':
+      return (
+        <PixelModal
+          title="[SAVE ERROR]"
+          tone="alert"
+          message="SAVE FAILED — STORAGE FULL OR BLOCKED"
+          confirmLabel="OK"
+          onConfirm={close}
+          onCancel={close}
+        >
+          <p className="modal-hint-pixel">FREE SOME SPACE OR LEAVE PRIVATE MODE, THEN TRY AGAIN.</p>
+        </PixelModal>
+      );
 
-        {activeModal === 'game_over' && (
-          <>
-            <h2 className="modal-title-pixel winner-title">[GAME OVER]</h2>
-            <div className="game-over-hero">
-              {winnerColor ? (
-                <PieceSprite code={`${winnerColor}K`} size={80} animated />
-              ) : (
-                <>
-                  <PieceSprite code="wK" size={60} animated />
-                  <span className="vs-text">=</span>
-                  <PieceSprite code="bK" size={60} animated />
-                </>
-              )}
-            </div>
-            <p className="modal-text-pixel">{gameStatus}</p>
-            <div className="btn-group-pixel">
-              <button className="pixel-action-btn game-over-btn-replay" onClick={onRestart}>
-                ↺ REPLAY
-              </button>
-              <button className="pixel-action-btn game-over-btn-menu" onClick={onConfirmQuit}>
-                ▤ MAIN MENU
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+    case 'confirm_overwrite':
+      return (
+        <PixelModal
+          title="[SLOTS FULL]"
+          tone="alert"
+          message={`ALL ${MAX_SAVE_SLOTS} SAVE SLOTS ARE USED. OVERWRITE THE OLDEST SAVE?`}
+          confirmLabel="YES (OVERWRITE)"
+          confirmVariant="danger"
+          onConfirm={onConfirmOverwrite}
+          cancelLabel="NO (CANCEL)"
+          onCancel={close}
+        />
+      );
+
+    case 'confirm_load':
+      return (
+        <PixelModal
+          title="[LOAD DATA]"
+          message="LOAD THIS SAVED MATCH?"
+          confirmLabel="YES (LOAD)"
+          onConfirm={onConfirmLoad}
+          cancelLabel="NO (CANCEL)"
+          onCancel={close}
+        >
+          {pendingLoadMatch && (
+            <p className="modal-hint-pixel">
+              {pendingLoadMatch.gameMode === 'bot'
+                ? `CPU (${(pendingLoadMatch.difficulty || '').toUpperCase()})`
+                : '1VS1'}
+              {' · '}
+              {pendingLoadMatch.date}
+            </p>
+          )}
+        </PixelModal>
+      );
+
+    case 'load_failed':
+      return (
+        <PixelModal
+          title="[LOAD ERROR]"
+          tone="alert"
+          message="FAILED TO READ THIS SAVE SLOT. THE DATA MAY BE DAMAGED."
+          confirmLabel="OK"
+          onConfirm={close}
+          onCancel={close}
+        />
+      );
+
+    case 'confirm_quit':
+      return (
+        <PixelModal
+          title="[WARN MODULE]"
+          tone="alert"
+          message="QUIT THIS MATCH AND GO BACK TO THE MENU?"
+          confirmLabel="YES (QUIT)"
+          confirmVariant="danger"
+          onConfirm={onConfirmQuit}
+          cancelLabel="NO (CANCEL)"
+          onCancel={close}
+        />
+      );
+
+    case 'confirm_delete':
+      return (
+        <PixelModal
+          title="[WARN MODULE]"
+          tone="alert"
+          message="DELETE THIS DATA SLOT PERMANENTLY?"
+          confirmLabel="YES (ERASE)"
+          confirmVariant="danger"
+          onConfirm={onConfirmDelete}
+          cancelLabel="NO (KEEP)"
+          onCancel={close}
+        />
+      );
+
+    case 'game_over': {
+      // 'w' / 'b' when someone won (checkmate or time-out), null for a draw.
+      const winnerColor = /WINNER: RED/.test(gameStatus) ? 'w' : /WINNER: BLUE/.test(gameStatus) ? 'b' : null;
+      return (
+        <PixelModal title="[GAME OVER]" tone="gold">
+          <div className="game-over-hero">
+            {winnerColor ? (
+              <PieceSprite code={`${winnerColor}K`} size={80} animated />
+            ) : (
+              <>
+                <PieceSprite code="wK" size={60} animated />
+                <span className="vs-text">=</span>
+                <PieceSprite code="bK" size={60} animated />
+              </>
+            )}
+          </div>
+          <p className="modal-text-pixel">{gameStatus}</p>
+          <div className="btn-group-pixel">
+            <button type="button" className="pixel-action-btn game-over-btn-replay" onClick={onRestart}>
+              ↺ REPLAY
+            </button>
+            <button type="button" className="pixel-action-btn game-over-btn-menu" onClick={onConfirmQuit}>
+              ▤ MAIN MENU
+            </button>
+          </div>
+        </PixelModal>
+      );
+    }
+
+    default:
+      return null;
+  }
 }
