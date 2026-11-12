@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Chessboard } from 'react-chessboard';
-import { pixelPieces } from '../pixelPieces';
+import { pixelPieces } from '../boardPieces';
 import { MoveScoresheet } from './MoveScoresheet';
 import { PlayerBar } from './PlayerBar';
 

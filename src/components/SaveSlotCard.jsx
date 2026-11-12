@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Shared saved-match card renderer — used by BOTH the compact wizard's
 // dedicated "LOAD GAME" step and the desktop always-visible save panel,
@@ -17,8 +16,15 @@ export function SaveSlotCard({ match, onResume, onDelete }) {
         <div className="card-status">{match.gameStatus}</div>
       </div>
       <div className="card-bottom-actions">
-        <button className="load-slot-btn">LOAD SLOT</button>
-        <button className="delete-slot-btn" onClick={(e) => onDelete(match.id, e)}>CLR</button>
+        <button type="button" className="load-slot-btn" aria-label={`Load saved match from ${match.date}`}>LOAD SLOT</button>
+        <button
+          type="button"
+          className="delete-slot-btn"
+          onClick={(e) => onDelete(match.id, e)}
+          aria-label={`Delete saved match from ${match.date}`}
+        >
+          CLR
+        </button>
       </div>
     </div>
   );

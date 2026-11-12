@@ -9,6 +9,11 @@ export function usePixelAnimation() {
   const animationFrameRef = useRef(null);
   const effectIndexRef = useRef(0);
   const lastFrameRef = useRef(0);
+  // The callbacks below are created once (stable identities for the board),
+  // so they reach the helper functions through this ref instead of closing
+  // over the first render's copies.
+  const fnRef = useRef(null);
+  fnRef.current = { createEffect, updateAndRender };
 
   const triggerCaptureAnimation = useCallback((square, onComplete, customType = null) => {
     if (!canvasRef.current) {
@@ -49,7 +54,7 @@ export function usePixelAnimation() {
       effectIndexRef.current = (effectIndexRef.current + 1) % effectTypes.length;
     }
 
-    createEffect(chosenEffect, x, y, size, onComplete);
+    fnRef.current.createEffect(chosenEffect, x, y, size, onComplete);
     return chosenEffect;
   }, []);
 
@@ -75,7 +80,7 @@ export function usePixelAnimation() {
     });
     animationsRef.current.push({ type: 'fx', fx, particles: [], currentFrame: 0, maxFrames: fx.duration, onComplete });
     if (!animationFrameRef.current) {
-      animationFrameRef.current = requestAnimationFrame(updateAndRender);
+      animationFrameRef.current = requestAnimationFrame(fnRef.current.updateAndRender);
     }
     return FX_SOUND[kind];
   }, []);
@@ -106,7 +111,7 @@ export function usePixelAnimation() {
     const y = squareRect.top - boardRect.top + squareRect.height / 2;
     const size = squareRect.width;
 
-    createEffect('cage', x, y, size, onComplete);
+    fnRef.current.createEffect('cage', x, y, size, onComplete);
     return 'cage';
   }, []);
 

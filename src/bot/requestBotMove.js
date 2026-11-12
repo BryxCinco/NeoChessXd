@@ -28,14 +28,15 @@ function getWorker() {
   return worker;
 }
 
-// Returns a Promise of { from, to, promotion } | null.
-export function requestBotMove(fen, difficulty) {
+// Returns a Promise of { from, to, promotion } | null. `pgn` is the game so
+// far, which lets the bot see draws by repetition.
+export function requestBotMove(fen, difficulty, pgn = null) {
   const w = getWorker();
-  if (!w) return Promise.resolve(findBestMove(fen, difficulty));
+  if (!w) return Promise.resolve(findBestMove(fen, difficulty, pgn));
 
   const id = ++nextId;
   return new Promise((resolve) => {
-    pending.set(id, (move) => resolve(move === undefined ? findBestMove(fen, difficulty) : move));
-    w.postMessage({ id, fen, difficulty });
+    pending.set(id, (move) => resolve(move === undefined ? findBestMove(fen, difficulty, pgn) : move));
+    w.postMessage({ id, fen, difficulty, pgn });
   });
 }

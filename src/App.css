@@ -724,6 +724,49 @@ button {
   color: #fff !important;
 }
 
+/* ── <PixelModal> (reusable retro dialog) ── */
+.pixel-modal.tone-info { border-color: #00ffcc !important; }
+.pixel-modal.tone-alert { border-color: #ff3333 !important; }
+.pixel-modal.tone-gold { border-color: #ffcc00 !important; }
+.pixel-modal.tone-alert .modal-title-pixel { color: #ff3333; }
+.pixel-modal.tone-gold .modal-title-pixel { color: #ffcc00; }
+
+/* CRT scanlines (the modal's flat background would otherwise hide them) */
+.pixel-modal.has-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.035) 0px,
+    rgba(255, 255, 255, 0.035) 1px,
+    transparent 1px,
+    transparent 3px
+  ) !important;
+}
+
+.pixel-modal .modal-text-pixel { overflow-wrap: anywhere; }
+
+.modal-hint-pixel {
+  font-size: 0.6rem;
+  line-height: 1.8;
+  color: #9ca3af;
+  margin: -12px 0 22px;
+  overflow-wrap: anywhere;
+}
+
+/* One button fills the row, two sit side by side — on every screen size. */
+.pixel-modal .pixel-modal-actions {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.pixel-modal-actions button.pixel-modal-confirm { background: #00ffcc; color: #000; }
+.pixel-modal-actions button.pixel-modal-confirm:hover { background: #33ffdd; }
+.pixel-modal-actions button.pixel-modal-danger { background: #ef4444; color: #000; }
+.pixel-modal-actions button.pixel-modal-danger:hover { background: #f87171; }
+
+.pixel-modal button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
 /* ── GAME OVER MODAL (checkmate / draw / time-out) ── */
 .modal-title-pixel.winner-title {
   color: #ffcc00;

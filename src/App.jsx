@@ -80,7 +80,7 @@ function App() {
             className="fx-gallery-open-btn"
             onClick={() => { audio.triggerInteractiveAudioContext(); audio.play('click'); setShowGallery(true); }}
           >
-            ★ FX GALLERY
+            <span aria-hidden="true">★ </span>FX GALLERY
           </button>
         </header>
       )}
@@ -119,8 +119,8 @@ function App() {
               style={{ position: 'static', pointerEvents: 'auto', fontSize: '1.1rem', lineHeight: 1 }}
               onClick={() => { audio.play('click'); setActiveModal('pause_menu'); }}
               disabled={chess.isAnimatingMove || chess.pendingPromotion}
-              aria-label="Menu"
-              title="Menu"
+              aria-label="Pause game and open menu"
+              title="Pause menu"
             >
               ☰
             </button>
@@ -162,11 +162,14 @@ function App() {
         gameStatus={chess.gameStatus}
         isAnimatingMove={chess.isAnimatingMove}
         pendingPromotion={chess.pendingPromotion}
+        pendingLoadMatch={matches.pendingLoadMatch}
         play={audio.play}
         onClose={() => setActiveModal(null)}
         onOpenQuitConfirm={() => setActiveModal('confirm_quit')}
         onRestart={chess.restartMatch}
         onSave={matches.saveGame}
+        onConfirmOverwrite={matches.confirmOverwriteOldest}
+        onConfirmLoad={matches.confirmLoadMatch}
         onConfirmQuit={executeQuitToMenu}
         onConfirmDelete={matches.confirmDeleteSlot}
       />
@@ -185,7 +188,7 @@ function App() {
           savedMatches={matches.savedMatches}
           onNewGame={wizard.chooseNewGame}
           onLoadGame={wizard.chooseLoadGame}
-          onResume={matches.resumeMatch}
+          onResume={matches.requestLoadMatch}
           onDelete={matches.triggerDeletePrompt}
           onSelectMode={(mode) => { audio.play('click'); chess.setGameMode(mode); }}
           onSelectDifficulty={(diff) => { audio.play('click'); chess.setDifficulty(diff); }}
