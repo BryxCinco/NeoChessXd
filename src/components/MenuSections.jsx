@@ -2,7 +2,11 @@ import { SavedMatchesList } from './SaveSlotCard';
 
 export function AudioToggleButton({ isMuted, onToggle }) {
   return (
-    <button className={`audio-toggle-btn ${isMuted ? 'is-muted' : ''}`} onClick={onToggle}>
+    <button
+      type="button"
+      className={`audio-toggle-btn ${isMuted ? 'is-muted' : ''}`}
+      onClick={onToggle}
+    >
       <span className="led-dot" />AUDIO: {isMuted ? 'OFF' : 'ON'}
     </button>
   );

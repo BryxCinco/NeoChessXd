@@ -80,7 +80,7 @@ function App() {
             className="fx-gallery-open-btn"
             onClick={() => { audio.triggerInteractiveAudioContext(); audio.play('click'); setShowGallery(true); }}
           >
-            ★ FX GALLERY
+            <span aria-hidden="true">★ </span>FX GALLERY
           </button>
         </header>
       )}
@@ -119,8 +119,8 @@ function App() {
               style={{ position: 'static', pointerEvents: 'auto', fontSize: '1.1rem', lineHeight: 1 }}
               onClick={() => { audio.play('click'); setActiveModal('pause_menu'); }}
               disabled={chess.isAnimatingMove || chess.pendingPromotion}
-              aria-label="Menu"
-              title="Menu"
+              aria-label="Pause game and open menu"
+              title="Pause menu"
             >
               ☰
             </button>
