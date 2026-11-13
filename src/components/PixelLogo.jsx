@@ -1,5 +1,5 @@
-// "NEO CHESS DX" arcade logo: chunky extruded letters doing a stepped
-// wave, plus a tilted DX sticker. `size` = 'lg' (menu) | 'sm' (in-game bar).
+// "CHESS FANTASY" arcade logo: chunky extruded letters doing a stepped
+// wave. `size` = 'lg' (menu) | 'sm' (in-game bar).
 const word = (text, offset) =>
   text.split('').map((ch, i) => (
     <span key={i} className="logo-letter" style={{ '--i': i + offset }}>
@@ -9,10 +9,9 @@ const word = (text, offset) =>
 
 export function PixelLogo({ size = 'lg', as: Tag = 'h1' }) {
   return (
-    <Tag className={`pixel-logo pixel-logo-${size}`} aria-label="Neo Chess DX">
-      <span className="logo-neo" aria-hidden="true">{word('NEO', 0)}</span>
-      <span className="logo-chess" aria-hidden="true">{word('CHESS', 3)}</span>
-      <span className="logo-dx" aria-hidden="true">DX</span>
+    <Tag className={`pixel-logo pixel-logo-${size}`} aria-label="Chess Fantasy">
+      <span className="logo-word-a" aria-hidden="true">{word('CHESS', 0)}</span>
+      <span className="logo-word-b" aria-hidden="true">{word('FANTASY', 5)}</span>
     </Tag>
   );
 }

@@ -1,18 +1,27 @@
 import { useState } from 'react';
 import './App.css';
+import './styles/features.css';
+import './styles/themes.css';
 
 import { useAudio, useBgmLoop } from './hooks/useAudio';
 import { useChessGame } from './hooks/useChessGame';
 import { useSavedMatches } from './hooks/useSavedMatches';
 import { useMenuWizard } from './hooks/useMenuWizard';
-import { useResponsiveLayout, useScrollLock } from './hooks/useResponsiveLayout';
+import { useResponsiveLayout, useScrollLock, useScrollTopOnChange } from './hooks/useResponsiveLayout';
+import { useSettings } from './hooks/useSettings';
+import { useToast } from './hooks/useToast';
+import { useThemeTransition } from './hooks/useThemeTransition';
+import { copyText, downloadText, pgnFileName } from './game/pgnExport';
 
 import { CountdownOverlay } from './components/CountdownOverlay';
 import { PromotionModal } from './components/PromotionModal';
 import { GameModals } from './components/GameModals';
+import { GameOverBar } from './components/GameOverBar';
+import { PixelToast } from './components/PixelToast';
 import { StartMenuScreen } from './components/StartMenuScreen';
 import { GameBoardScreen } from './components/GameBoardScreen';
 import { PieceSprite } from './pixelPieces';
+import { PieceSkinContext } from './pieceSkinContext.js';
 import { PixelLogo } from './components/PixelLogo';
 import { FxGallery } from './components/FxGallery';
 
@@ -21,7 +30,15 @@ function App() {
   const [showGallery, setShowGallery] = useState(false);
 
   const audio = useAudio();
-  const chess = useChessGame({ audio, activeModal, setActiveModal });
+  const { settings, updateSetting, toggleEffect, resetSettings, theme } = useSettings();
+  const { toast, notify, dismiss: dismissToast } = useToast();
+  // A theme change fades through black; every other setting applies at once.
+  const themeFade = useThemeTransition((id) => updateSetting('boardTheme', id), settings.animations && settings.screenFx);
+  const changeSetting = (key, value) => {
+    if (key === 'boardTheme' && value !== settings.boardTheme) themeFade.changeTheme(value);
+    else updateSetting(key, value);
+  };
+  const chess = useChessGame({ audio, activeModal, setActiveModal, animations: settings.animations, notify, effects: settings });
   const matches = useSavedMatches({ chess, audio, setActiveModal });
   const wizard = useMenuWizard({ chess, matches, audio });
   const { isCompactLayout } = useResponsiveLayout();
@@ -33,6 +50,7 @@ function App() {
     triggerInteractiveAudioContext: audio.triggerInteractiveAudioContext,
   });
 
+  useScrollTopOnChange(chess.gameStarted || chess.isStarting);
   useScrollLock(chess.isStarting || !!activeModal || !!chess.pendingPromotion || showGallery);
 
   function executeQuitToMenu() {
@@ -43,18 +61,37 @@ function App() {
     audio.play('click');
   }
 
+  async function copyPgn() {
+    audio.play('click');
+    const ok = await copyText(chess.exportPgn());
+    notify(ok ? 'PGN COPIED TO CLIPBOARD' : 'COPY FAILED - TRY DOWNLOAD', ok ? 'success' : 'alert');
+  }
+
+  function downloadPgn() {
+    audio.play('click');
+    const ok = downloadText(chess.exportPgn(), pgnFileName());
+    notify(ok ? 'PGN DOWNLOADED' : 'DOWNLOAD FAILED', ok ? 'success' : 'alert');
+  }
+
+  const showCheckFlash = chess.kingCheckedAlert && chess.gameStarted && !chess.isGameOver;
+
   return (
+    <PieceSkinContext.Provider value={settings.pieceSkin}>
+    <div className="theme-backdrop" aria-hidden="true" />
+    {themeFade.phase && <div className={`theme-fade is-${themeFade.phase}`} aria-hidden="true" />}
     <div
       className={`app-container pixel-art ${chess.gameStarted ? 'game-active' : ''} ${
-        chess.kingCheckedAlert && chess.gameStarted && !chess.isGameOver ? 'screen-flash-active' : ''
+        showCheckFlash ? 'screen-flash-active' : ''
       }`}
       onClick={audio.triggerInteractiveAudioContext}
     >
-      {chess.kingCheckedAlert && chess.gameStarted && !chess.isGameOver && (
+      {showCheckFlash && (
         <div className="screen-flash-overlay" onClick={() => chess.setKingCheckedAlert(false)}>
           <div className="flash-alert-text">CHECK!</div>
         </div>
       )}
+
+      <PixelToast toast={toast} onDismiss={dismissToast} />
 
       {!chess.gameStarted && (
         <header className="game-header">
@@ -135,6 +172,21 @@ function App() {
             >
               ↷
             </button>
+            {/* Hints exist only against the CPU on EASY (3) and NORMAL (1). */}
+            {chess.hintLimit > 0 && (
+              <button
+                type="button"
+                className={`top-menu-trigger-btn top-hint-btn icon-btn-pixel ${chess.hintLoading ? 'is-loading' : ''}`}
+                style={{ position: 'static', pointerEvents: 'auto', lineHeight: 1 }}
+                onClick={() => chess.requestHint()}
+                disabled={!chess.canHint}
+                aria-label={`Show a hint (${chess.hintsLeft} left)`}
+                title={`Hint (${chess.hintsLeft} left)`}
+              >
+                <span aria-hidden="true">{chess.hintLoading ? '…' : '?'}</span>
+                <span className="hint-count" aria-hidden="true">{chess.hintsLeft}</span>
+              </button>
+            )}
           </div>
 
           <div style={{ pointerEvents: 'auto' }}>
@@ -146,7 +198,12 @@ function App() {
       {showGallery && <FxGallery play={audio.play} onClose={() => setShowGallery(false)} />}
 
       {chess.isStarting && (
-        <CountdownOverlay countdownValue={chess.countdownValue} gameMode={chess.gameMode} difficulty={chess.difficulty} />
+        <CountdownOverlay
+          countdownValue={chess.countdownValue}
+          gameMode={chess.gameMode}
+          difficulty={chess.difficulty}
+          playerColor={chess.playerColor}
+        />
       )}
 
       {chess.pendingPromotion && (
@@ -159,19 +216,30 @@ function App() {
 
       <GameModals
         activeModal={activeModal}
-        gameStatus={chess.gameStatus}
         isAnimatingMove={chess.isAnimatingMove}
         pendingPromotion={chess.pendingPromotion}
         pendingLoadMatch={matches.pendingLoadMatch}
+        pendingDrawOffer={chess.pendingDrawOffer}
+        canEndManually={chess.canEndManually}
+        gameMode={chess.gameMode}
+        settings={settings}
         play={audio.play}
         onClose={() => setActiveModal(null)}
-        onOpenQuitConfirm={() => setActiveModal('confirm_quit')}
+        onOpenModal={setActiveModal}
         onRestart={chess.restartMatch}
         onSave={matches.saveGame}
         onConfirmOverwrite={matches.confirmOverwriteOldest}
         onConfirmLoad={matches.confirmLoadMatch}
         onConfirmQuit={executeQuitToMenu}
         onConfirmDelete={matches.confirmDeleteSlot}
+        onConfirmResign={chess.resign}
+        onOfferDraw={chess.offerDraw}
+        onAnswerDraw={chess.respondToDraw}
+        onCopyPgn={copyPgn}
+        onDownloadPgn={downloadPgn}
+        onChangeSetting={changeSetting}
+        onResetSettings={resetSettings}
+        onToggleEffect={toggleEffect}
       />
 
       {!chess.gameStarted ? (
@@ -179,12 +247,14 @@ function App() {
           isCompactLayout={isCompactLayout}
           isMuted={audio.isMuted}
           onToggleAudio={audio.toggleMute}
+          onOpenSettings={() => { audio.triggerInteractiveAudioContext(); audio.play('click'); setActiveModal('settings'); }}
           menuStep={wizard.menuStep}
           wizardTotalSteps={wizard.wizardTotalSteps}
           wizardCurrentStepNumber={wizard.wizardCurrentStepNumber}
           gameMode={chess.gameMode}
           difficulty={chess.difficulty}
           timeMode={chess.timeMode}
+          colorChoice={chess.colorChoice}
           savedMatches={matches.savedMatches}
           onNewGame={wizard.chooseNewGame}
           onLoadGame={wizard.chooseLoadGame}
@@ -192,13 +262,14 @@ function App() {
           onDelete={matches.triggerDeletePrompt}
           onSelectMode={(mode) => { audio.play('click'); chess.setGameMode(mode); }}
           onSelectDifficulty={(diff) => { audio.play('click'); chess.setDifficulty(diff); }}
+          onSelectColor={(color) => { audio.play('click'); chess.setColorChoice(color); }}
           onSelectTime={(time) => { audio.play('click'); chess.setTimeMode(time); }}
           onNextStep={wizard.goToNextMenuStep}
           onPrevStep={wizard.goToPrevMenuStep}
           onStartGame={chess.startGame}
         />
       ) : (
-        <div className="game-screen-wrap">
+        <div className={`game-screen-wrap ${chess.showGameOver ? 'has-game-over-bar' : ''}`}>
           <GameBoardScreen
             boardWrapperRef={chess.boardWrapperRef}
             boardInnerRef={chess.boardInnerRef}
@@ -224,10 +295,38 @@ function App() {
             moveHistory={chess.moveHistory}
             lastMove={chess.lastMove}
             isCompactLayout={isCompactLayout}
-          />
+            boardOrientation={chess.boardOrientation}
+            playerColor={chess.playerColor}
+            theme={theme}
+            animations={settings.animations}
+            onJumpToPly={chess.isGameOver ? chess.jumpToPly : undefined}
+            activePly={chess.isReviewing ? chess.reviewPly : undefined}
+            matchNotes={chess.matchNotes}
+          >
+            {/* Game over is a bar, never a modal: in the side column on
+                desktop, docked to the bottom of the screen on phones. */}
+            {chess.showGameOver && (
+              <GameOverBar
+                gameStatus={chess.gameStatus}
+                winner={chess.winner}
+                isReviewing={chess.isReviewing}
+                reviewPly={chess.reviewPly}
+                totalPlies={chess.totalPlies}
+                onRematch={chess.restartMatch}
+                onViewBoard={() => { audio.play('click'); chess.startReview(); }}
+                onExit={executeQuitToMenu}
+                onStep={chess.stepReview}
+                onJump={chess.jumpToPly}
+                onExitReview={chess.exitReview}
+                onCopyPgn={copyPgn}
+                onDownloadPgn={downloadPgn}
+              />
+            )}
+          </GameBoardScreen>
         </div>
       )}
     </div>
+    </PieceSkinContext.Provider>
   );
 }
 

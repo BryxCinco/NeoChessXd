@@ -14,11 +14,17 @@ const TIPS = [
 const ARMY = ['P', 'N', 'B', 'R', 'Q'];
 
 // Fighting-game style "VS" stage intro shown during the 3-2-1 countdown.
-export function CountdownOverlay({ countdownValue, gameMode, difficulty }) {
+const CPU_NAME = { easy: 'EASY', medium: 'NORMAL', tough: 'TOUGH', hard: 'HARD' };
+
+export function CountdownOverlay({ countdownValue, gameMode, difficulty, playerColor = 'w' }) {
   const [tip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]);
   const isGo = typeof countdownValue === 'string';
   const step = isGo ? 4 : 4 - countdownValue; // 1..4
-  const blueName = gameMode === 'bot' ? `CPU ${(difficulty === 'medium' ? 'NORMAL' : difficulty || '').toUpperCase()}` : 'PLAYER 2';
+  // Bot match: one side is YOU, the other the CPU (whichever colour you didn't take).
+  const isBot = gameMode === 'bot';
+  const cpuName = `CPU ${CPU_NAME[difficulty] || ''}`.trim();
+  const redName = !isBot ? 'PLAYER 1' : playerColor === 'w' ? 'YOU' : cpuName;
+  const blueName = !isBot ? 'PLAYER 2' : playerColor === 'b' ? 'YOU' : cpuName;
 
   return (
     <div className="stage-intro" role="status" aria-live="assertive">
@@ -35,7 +41,7 @@ export function CountdownOverlay({ countdownValue, gameMode, difficulty }) {
               {ARMY.map((p) => <PieceSprite key={p} code={`w${p}`} size={28} />)}
             </div>
             <div className="intro-name">RED ARMY</div>
-            <div className="intro-sub">PLAYER 1</div>
+            <div className="intro-sub">{redName}</div>
           </div>
 
           <div className="intro-vs-badge">VS</div>

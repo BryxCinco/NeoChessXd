@@ -1,0 +1,548 @@
+/* ══════════════ MATCH FEATURES & SETTINGS ══════════════
+   Styles for: choosing a side, the extra difficulty / time presets, the
+   hint button, the game-over bar + review controls, toasts, the settings
+   screen, and the two settings switches that restyle the whole page.
+   Loaded after App.css (see App.jsx), so equal-specificity rules here win. */
+
+/* ── MENU: header buttons, side picker, extra presets ── */
+.menu-header-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-open-btn {
+  background: #000;
+  color: var(--accent);
+  border: 3px solid var(--accent);
+  border-radius: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.65rem;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+}
+.settings-open-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+/* Four difficulty levels sit in a 2 x 2 block. */
+.btn-group-pixel.diff-grid { grid-template-columns: repeat(2, 1fr); }
+.btn-group-pixel button.diff-tough.active {
+  background: #fb923c;
+  color: #000;
+  box-shadow: 3px 3px 0 #000, 0 0 0 3px rgba(251, 146, 60, 0.35);
+}
+
+/* Nine time presets: always three per row. */
+.btn-group-pixel.time-grid { grid-template-columns: repeat(3, 1fr); }
+
+.menu-section-note {
+  margin: 10px 0 0;
+  font-size: 0.5rem;
+  line-height: 1.7;
+  color: #9ca3af;
+}
+
+.btn-group-pixel.side-grid { grid-template-columns: repeat(3, 1fr); }
+.side-sprite {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 34px;
+}
+.side-hint {
+  font-size: 0.45rem;
+  opacity: 0.75;
+}
+.btn-group-pixel button.side-red.active {
+  background: var(--red);
+  color: #fff;
+  box-shadow: 3px 3px 0 #000, 0 0 0 3px rgba(232, 40, 43, 0.4);
+}
+.btn-group-pixel button.side-blue.active {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 3px 3px 0 #000, 0 0 0 3px rgba(47, 123, 255, 0.4);
+}
+@media (max-width: 360px) {
+  .btn-group-pixel.side-grid { grid-template-columns: 1fr; }
+}
+
+/* ── PAUSE MENU: more actions ── */
+.pause-menu-grid .pause-wide { grid-column: 1 / -1; }
+.pause-menu-grid .pixel-action-btn {
+  font-size: 0.6rem;
+  line-height: 1.5;
+  padding: 12px 6px;
+  color: #000;
+}
+.pause-menu-grid .pixel-action-btn.action-continue { background: #4ade80; }
+.pause-menu-grid .pixel-action-btn.action-restart { background: #fde047; }
+.pause-menu-grid .pixel-action-btn.action-save { background: var(--accent-2); }
+.pause-menu-grid .pixel-action-btn.action-draw { background: #c4b5fd; }
+.pause-menu-grid .pixel-action-btn.action-resign { background: #f87171; }
+.pause-menu-grid .pixel-action-btn.action-pgn { background: #93c5fd; }
+.pause-menu-grid .pixel-action-btn.action-settings { background: #fcd34d; }
+.pause-menu-grid .pixel-action-btn.action-forfeit { background: #9ca3af; }
+.pause-menu-grid .pixel-action-btn:hover:not(:disabled) { filter: brightness(1.12); }
+
+/* ── HINT BUTTON + SQUARE PULSE ── */
+.top-hint-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  color: #33d873;
+  border-color: #33d873;
+}
+.top-hint-btn .hint-count {
+  font-size: 0.55rem;
+  background: #33d873;
+  color: #000;
+  padding: 3px 4px;
+}
+.top-hint-btn:disabled .hint-count { background: #6b7280; }
+.top-hint-btn.is-loading { color: #fff; border-color: #fff; }
+
+@keyframes hintPulse {
+  50% { box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.95); }
+}
+
+/* ── GAME-OVER BAR (never a modal: the board stays visible) ──
+   Desktop: a panel in the side column, under the status box.
+   Phones / tablets: docked to the bottom of the screen (see below). */
+.game-over-bar {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: #1f2226;
+  border: 4px solid var(--accent);
+  box-shadow: 6px 6px 0 #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.game-over-bar.is-review { border-color: var(--accent-2); }
+@keyframes gobRise {
+  from { transform: translate(-50%, 110%); }
+  to { transform: translate(-50%, 0); }
+}
+
+.gob-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.gob-hero {
+  display: flex;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.gob-title {
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+.gob-status {
+  font-size: 0.55rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.gob-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.gob-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 3px solid #000;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 #000;
+  padding: 10px 4px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  line-height: 1.4;
+  color: #000;
+  cursor: pointer;
+}
+.gob-btn:active { transform: translate(3px, 3px); box-shadow: none; }
+.gob-rematch { background: var(--accent-2); }
+.gob-view { background: #fde047; }
+.gob-exit { background: #ff5555; color: #fff; }
+.gob-pgn { background: #3e4249; color: #fff; padding: 7px 4px; font-size: 0.5rem; }
+.gob-done { background: #fde047; flex: 0 0 auto; padding: 8px 12px; }
+
+.gob-review-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gob-nav {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  background: #000;
+  color: var(--accent-2);
+  border: 3px solid var(--accent-2);
+  border-radius: 0;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.gob-nav:disabled { color: #4b5563; border-color: #4b5563; cursor: not-allowed; }
+.gob-counter {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 0.6rem;
+}
+.gob-keys {
+  flex: 1 1 auto;
+  font-size: 0.45rem;
+  color: #9ca3af;
+}
+
+.game-over-bar button:focus-visible,
+.settings-panel button:focus-visible,
+.settings-open-btn:focus-visible,
+.scoresheet-move-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 1024px) {
+  .game-over-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    z-index: 500;
+    width: min(640px, calc(100vw - 16px));
+    animation: gobRise 0.25s steps(4, end);
+  }
+  /* Leave room under the page so the bar never hides the scoresheet. */
+  .game-screen-wrap.has-game-over-bar { padding-bottom: 190px; }
+}
+
+/* Landscape phones: tuck the bar into the corner beside the board. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .game-over-bar {
+    left: auto;
+    right: 8px;
+    bottom: 8px;
+    transform: none;
+    width: min(320px, 44vw);
+    animation: none;
+    padding: 8px;
+  }
+  .gob-hero, .gob-keys { display: none; }
+  .game-screen-wrap.has-game-over-bar { padding-bottom: 0; }
+}
+
+/* ── SCORESHEET: clickable moves (post-game review) ── */
+.scoresheet-move-btn {
+  border: 0;
+  border-radius: 2px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.scoresheet-move-btn:hover { text-decoration: underline; }
+
+/* ── TOAST ── */
+.pixel-toast-layer {
+  position: fixed;
+  top: 70px;
+  left: 0;
+  right: 0;
+  z-index: 10000; /* above modals: a toast can answer a modal action */
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0 12px;
+}
+.pixel-toast {
+  pointer-events: auto;
+  max-width: 100%;
+  background: #000;
+  color: var(--accent-2);
+  border: 3px solid var(--accent-2);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  line-height: 1.6;
+  padding: 10px 14px;
+  cursor: pointer;
+  animation: toastDrop 0.2s steps(3, end);
+}
+.pixel-toast.tone-success { color: #4ade80; border-color: #4ade80; }
+.pixel-toast.tone-alert { color: #ff6b6d; border-color: #ff6b6d; }
+@keyframes toastDrop {
+  from { transform: translateY(-140%); }
+  to { transform: translateY(0); }
+}
+
+/* ── SETTINGS SCREEN ── */
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.settings-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+.settings-label {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 0.6rem;
+  line-height: 1.6;
+  color: #fff;
+}
+.settings-note {
+  display: block;
+  font-size: 0.45rem;
+  color: #9ca3af;
+}
+.settings-value {
+  flex: 0 0 34px;
+  text-align: right;
+  font-size: 0.6rem;
+  color: var(--accent);
+}
+
+.settings-slider {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  accent-color: var(--accent-2);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.settings-slider::-webkit-slider-runnable-track {
+  height: 10px;
+  background: #000;
+  border: 2px solid #4b5563;
+}
+.settings-slider::-moz-range-track {
+  height: 10px;
+  background: #000;
+  border: 2px solid #4b5563;
+}
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 24px;
+  margin-top: -9px;
+  background: var(--accent-2);
+  border: 3px solid #000;
+  border-radius: 0;
+}
+.settings-slider::-moz-range-thumb {
+  width: 12px;
+  height: 20px;
+  background: var(--accent-2);
+  border: 3px solid #000;
+  border-radius: 0;
+}
+.settings-slider:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+.settings-toggle {
+  flex: 0 0 64px;
+  background: #3e4249;
+  color: #9ca3af;
+  border: 3px solid #000;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  padding: 9px 0;
+  cursor: pointer;
+}
+.settings-toggle.is-on { background: #4ade80; color: #000; }
+
+.settings-themes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.settings-theme {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #3e4249;
+  color: #fff;
+  border: 3px solid #000;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  line-height: 1.4;
+  padding: 7px;
+  cursor: pointer;
+  text-align: left;
+}
+.settings-theme.is-active {
+  background: var(--accent);
+  color: #000;
+  box-shadow: 3px 3px 0 #000, 0 0 0 3px rgba(255, 204, 0, 0.35);
+}
+.theme-swatch {
+  display: grid;
+  grid-template-columns: repeat(2, 11px);
+  grid-template-rows: repeat(2, 11px);
+  border: 2px solid #000;
+  flex-shrink: 0;
+}
+
+.settings-reset {
+  align-self: center;
+  background: none;
+  color: #9ca3af;
+  border: 0;
+  border-bottom: 2px dotted #9ca3af;
+  border-radius: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+/* ── SETTINGS SWITCHES (classes set on <html> by useSettings) ── */
+
+/* ANIMATIONS OFF: no CSS motion anywhere. (The capture effects and the
+   board's slide are switched off in JS.) */
+html.no-animations *,
+html.no-animations *::before,
+html.no-animations *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* SCREEN FX OFF: no starfield, scanlines, vignette or full-screen flash.
+   The CHECK! label itself stays — it carries information. */
+html.no-screen-fx body::before,
+html.no-screen-fx body::after {
+  display: none;
+}
+html.no-screen-fx .screen-flash-overlay {
+  background: none;
+  border-color: transparent;
+  animation: none;
+}
+html.no-screen-fx .bento-pixel,
+html.no-screen-fx .pixel-modal.has-scanlines {
+  background-image: none !important;
+}
+
+/* ── PIECE SKIN PICKER ── */
+.settings-skins { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.settings-skin { flex-direction: column; gap: 6px; }
+.skin-preview {
+  display: flex;
+  border: 2px solid #120a1a;
+}
+.skin-preview > span {
+  display: flex;
+  padding: 2px;
+}
+
+/* Long settings list: scroll inside the panel so DONE stays on screen. */
+.settings-panel {
+  max-height: min(60dvh, 540px);
+  overflow-y: auto;
+  padding: 2px 8px 6px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) #1c1e24;
+}
+
+/* ── EFFECT SETTINGS ── */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 3px dashed #4b5563;
+  padding-top: 14px;
+}
+.settings-section-title {
+  margin: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.65rem;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+.settings-select {
+  flex: 0 1 46%;
+  min-width: 0;
+  background: #000;
+  color: var(--accent-2);
+  border: 3px solid var(--accent-2);
+  border-radius: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  padding: 9px 6px;
+  cursor: pointer;
+}
+.settings-select:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.settings-select:disabled,
+.settings-slider:disabled,
+.settings-effect:disabled { opacity: 0.4; cursor: not-allowed; }
+.settings-effects summary {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 6px 0;
+}
+.settings-effects summary:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.settings-effect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.settings-effect {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  background: #23262d;
+  color: #8b93a1;
+  border: 2px solid #000;
+  border-radius: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.42rem;
+  line-height: 1.4;
+  text-align: left;
+  padding: 6px;
+  cursor: pointer;
+}
+.settings-effect.is-on { background: #3e4249; color: #fff; }
+.settings-effect-led {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: #4b5563;
+  border: 1px solid #000;
+}
+.settings-effect.is-on .settings-effect-led { background: #4ade80; box-shadow: 0 0 6px #4ade80; }

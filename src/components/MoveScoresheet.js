@@ -3,14 +3,38 @@ import React, { useRef, useEffect, memo } from 'react';
 
 // memo: the clock re-renders the board screen every tick; the scoresheet
 // only needs to update when a move is made.
-export const MoveScoresheet = memo(function MoveScoresheet({ moveHistory, lastMove, gameStatus, isCompactLayout }) {
+//
+// `onJumpToPly(ply)` (optional): when given, every move becomes a button
+// that jumps the board to the position after that move — used for the
+// post-game review. `activePly` is the position currently on the board
+// (defaults to the last move). `notes` are non-move events such as a
+// resignation or a draw offer: [{ ply, text }].
+export const MoveScoresheet = memo(function MoveScoresheet({
+  moveHistory,
+  lastMove,
+  gameStatus,
+  isCompactLayout,
+  onJumpToPly,
+  activePly,
+  notes,
+}) {
   const scrollRef = useRef(null);
 
+  const totalPlies = moveHistory.reduce((n, row) => n + (row.white ? 1 : 0) + (row.black ? 1 : 0), 0);
+  const currentPly = activePly === undefined || activePly === null ? totalPlies : activePly;
+  const followsLive = currentPly === totalPlies;
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const body = scrollRef.current;
+    if (!body) return;
+    if (followsLive) {
+      body.scrollTop = body.scrollHeight;
+      return;
     }
-  }, [moveHistory, lastMove]);
+    // Reviewing: keep the highlighted move in view.
+    const active = body.querySelector('[data-active="true"]');
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
+  }, [moveHistory, lastMove, currentPly, followsLive, notes]);
 
   const isGameOver = gameStatus.includes('WINNER') || gameStatus.includes('DRAW') || gameStatus.includes('GAME OVER');
 
@@ -80,43 +104,73 @@ export const MoveScoresheet = memo(function MoveScoresheet({ moveHistory, lastMo
     textTransform: 'uppercase',
   };
 
-  // Build move rows using React.createElement (no JSX)
-  const moveRows = moveHistory.map((movePair, index) => {
-    const isLastPair = index === moveHistory.length - 1;
-    const hasBlack = !!movePair.black;
-    const whiteHighlight = isLastPair && !hasBlack;
-    const blackHighlight = isLastPair && hasBlack;
+  const noteStyle = {
+    marginTop: '6px',
+    color: '#9fb4ff',
+    fontSize: '0.7rem',
+    textTransform: 'uppercase',
+  };
 
-    const whiteStyle = {
-      color: whiteHighlight ? '#ff6b6b' : '#d0d0e0',
-      fontWeight: whiteHighlight ? 'bold' : 'normal',
+  // One move cell: a plain <span>, or a <button> when moves can be jumped to.
+  let ply = 0;
+  const moveCell = (san, color, key) => {
+    if (!san) return React.createElement('span', { key, style: { color: '#d0d0e0', padding: '1px 4px' } }, '...');
+    ply += 1;
+    const thisPly = ply;
+    const active = thisPly === currentPly;
+    const accent = color === 'w' ? '#ff6b6b' : '#4dabf7';
+    const style = {
+      color: active ? accent : '#d0d0e0',
+      fontWeight: active ? 'bold' : 'normal',
       padding: '1px 4px',
       borderRadius: '2px',
-      background: whiteHighlight ? 'rgba(255, 107, 107, 0.15)' : 'transparent',
+      background: active ? (color === 'w' ? 'rgba(255, 107, 107, 0.15)' : 'rgba(77, 171, 247, 0.15)') : 'transparent',
     };
-
-    const blackStyle = {
-      color: blackHighlight ? '#4dabf7' : '#d0d0e0',
-      fontWeight: blackHighlight ? 'bold' : 'normal',
-      padding: '1px 4px',
-      borderRadius: '2px',
-      background: blackHighlight ? 'rgba(77, 171, 247, 0.15)' : 'transparent',
-    };
-
+    if (!onJumpToPly) {
+      return React.createElement('span', { key, style, 'data-active': active ? 'true' : undefined }, san);
+    }
     return React.createElement(
+      'button',
+      {
+        key,
+        type: 'button',
+        className: 'scoresheet-move-btn',
+        style,
+        'data-active': active ? 'true' : undefined,
+        'aria-current': active ? 'step' : undefined,
+        'aria-label': `Go to move ${Math.ceil(thisPly / 2)} by ${color === 'w' ? 'Red' : 'Blue'}: ${san}`,
+        onClick: () => onJumpToPly(thisPly),
+      },
+      san
+    );
+  };
+
+  // Build move rows using React.createElement (no JSX)
+  const moveRows = moveHistory.map((movePair) =>
+    React.createElement(
       React.Fragment,
       { key: movePair.number },
       React.createElement('span', { style: numberStyle }, movePair.number + '.'),
-      React.createElement('span', { style: whiteStyle }, movePair.white || '...'),
-      React.createElement('span', { style: blackStyle }, movePair.black || '...')
-    );
-  });
+      moveCell(movePair.white, 'w', 'w'),
+      moveCell(movePair.black, 'b', 'b')
+    )
+  );
 
   const bodyContent = moveHistory.length === 0
     ? React.createElement('div', { style: emptyStyle }, 'No moves yet...')
     : React.createElement('div', { style: gridStyle }, moveRows);
 
-  const resultContent = isGameOver && moveHistory.length > 0
+  const noteContent = notes && notes.length > 0
+    ? React.createElement(
+        'ul',
+        { className: 'scoresheet-notes', style: { listStyle: 'none', margin: 0, padding: 0 } },
+        notes.map((note, i) =>
+          React.createElement('li', { key: i, style: noteStyle }, `▸ ${note.text}`)
+        )
+      )
+    : null;
+
+  const resultContent = isGameOver && (moveHistory.length > 0 || noteContent)
     ? React.createElement(
         'div',
         { style: resultStyle },
@@ -141,6 +195,7 @@ export const MoveScoresheet = memo(function MoveScoresheet({ moveHistory, lastMo
       'div',
       { ref: scrollRef, className: 'scoresheet-body pixel-text', style: bodyStyle },
       bodyContent,
+      noteContent,
       resultContent
     )
   );

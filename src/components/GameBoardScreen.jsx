@@ -6,11 +6,7 @@ import { PlayerBar } from './PlayerBar';
 
 // Gold frame drawn with box-shadow (not border) so it never adds to the
 // measured board width and pushes the h-file off narrow screens.
-const BOARD_STYLE = {
-  boxShadow: '0 0 0 5px #ffcc00',
-};
-const DARK_SQUARE_STYLE = { backgroundColor: '#2e2017' };
-const LIGHT_SQUARE_STYLE = { backgroundColor: '#e8cfa6' };
+const DEFAULT_THEME = { light: '#e8cfa6', dark: '#2e2017' };
 const LOW_TIME_SECONDS = 20;
 
 export function GameBoardScreen({
@@ -38,15 +34,27 @@ export function GameBoardScreen({
   lastMove,
   isCompactLayout,
   isGameOver,
+  boardOrientation = 'white',
+  playerColor = 'w',
+  theme = DEFAULT_THEME,
+  animations = true,
+  onJumpToPly,
+  activePly,
+  matchNotes,
+  children, // extra side-panel content: the game-over bar
 }) {
   // The clock re-renders this screen several times a second; memoizing the
   // board means react-chessboard (64 squares + 32 SVG pieces) only
   // re-renders when the position, size or square highlights actually
   // change — the single biggest smoothness win on phones. All handlers come
   // from useChessGame with stable identities.
+  const darkSquareStyle = useMemo(() => ({ backgroundColor: theme.dark }), [theme.dark]);
+  const lightSquareStyle = useMemo(() => ({ backgroundColor: theme.light }), [theme.light]);
+  const boardStyle = useMemo(() => ({ boxShadow: `0 0 0 5px ${(theme.boardTheme && theme.boardTheme.border) || '#ffcc00'}` }), [theme]);
   const board = useMemo(() => (
     <Chessboard
       boardWidth={boardWidth}
+      boardOrientation={boardOrientation}
       position={displayPosition}
       onPieceDrop={onDrop}
       onSquareClick={onSquareClick}
@@ -54,22 +62,25 @@ export function GameBoardScreen({
       isDraggablePiece={isDraggablePiece}
       customPieces={pixelPieces}
       customSquareStyles={customSquareStyles}
-      customBoardStyle={BOARD_STYLE}
-      customDarkSquareStyle={DARK_SQUARE_STYLE}
-      customLightSquareStyle={LIGHT_SQUARE_STYLE}
-      animationDuration={180}
+      customBoardStyle={boardStyle}
+      customDarkSquareStyle={darkSquareStyle}
+      customLightSquareStyle={lightSquareStyle}
+      animationDuration={animations ? 180 : 0}
     />
-  ), [boardWidth, displayPosition, onDrop, onSquareClick, onPieceDragBegin, isDraggablePiece, customSquareStyles]);
+  ), [boardWidth, boardOrientation, displayPosition, onDrop, onSquareClick, onPieceDragBegin, isDraggablePiece,
+    customSquareStyles, darkSquareStyle, lightSquareStyle, boardStyle, animations]);
 
   const turn = game.turn();
   const timed = timeMode !== 'none';
   const playerBar = (color) => {
     const time = color === 'w' ? whiteTime : blackTime;
-    const isCpu = color === 'b' && gameMode === 'bot';
+    const isBot = gameMode === 'bot';
+    const isCpu = isBot && color !== playerColor;
+    const role = !isBot ? '' : isCpu ? ' (CPU)' : ' (YOU)';
     return (
       <PlayerBar
         color={color}
-        label={color === 'w' ? 'P1 RED' + (gameMode === 'bot' ? ' (YOU)' : '') : 'P2 BLUE' + (isCpu ? ' (CPU)' : '')}
+        label={(color === 'w' ? 'P1 RED' : 'P2 BLUE') + role}
         isActive={!isGameOver && turn === color}
         isThinking={isCpu && botThinking}
         capturedTypes={captured[color]}
@@ -80,10 +91,14 @@ export function GameBoardScreen({
     );
   };
 
+  // The side shown at the bottom of the board is the one facing the player.
+  const bottomColor = boardOrientation === 'black' ? 'b' : 'w';
+  const topColor = bottomColor === 'w' ? 'b' : 'w';
+
   return (
     <div className="game-grid-pixel">
       <div className="board-column">
-        {playerBar('b')}
+        {playerBar(topColor)}
 
         <div
           className={`bento-pixel board-frame ${checkmateFx ? 'board-shake' : ''}`}
@@ -100,7 +115,7 @@ export function GameBoardScreen({
           )}
         </div>
 
-        {playerBar('w')}
+        {playerBar(bottomColor)}
       </div>
 
       <div className="side-pixel-wrapper">
@@ -112,11 +127,16 @@ export function GameBoardScreen({
           <div className="stage-info">STAGE: {gameMode === 'bot' ? 'WORLD CPU BOT' : 'WORLD 1v1 LOCAL'}</div>
         </div>
 
+        {children}
+
         <MoveScoresheet
           moveHistory={moveHistory}
           lastMove={lastMove}
           gameStatus={gameStatus}
           isCompactLayout={isCompactLayout}
+          onJumpToPly={onJumpToPly}
+          activePly={activePly}
+          notes={matchNotes}
         />
       </div>
     </div>

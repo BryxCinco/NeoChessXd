@@ -1,4 +1,6 @@
 import { SavedMatchesList } from './SaveSlotCard';
+import { PieceSprite } from '../pixelPieces';
+import { TIME_PRESETS } from '../game/timeControl';
 
 export function AudioToggleButton({ isMuted, onToggle }) {
   return (
@@ -8,6 +10,14 @@ export function AudioToggleButton({ isMuted, onToggle }) {
       onClick={onToggle}
     >
       <span className="led-dot" />AUDIO: {isMuted ? 'OFF' : 'ON'}
+    </button>
+  );
+}
+
+export function SettingsButton({ onOpen }) {
+  return (
+    <button type="button" className="settings-open-btn" onClick={onOpen} aria-label="Open settings">
+      <span aria-hidden="true">⚙ </span>SETTINGS
     </button>
   );
 }
@@ -55,14 +65,66 @@ export function ModeSelectionSection({ gameMode, onSelect }) {
   );
 }
 
+const DIFFICULTIES = [
+  { id: 'easy', label: 'EASY', className: 'diff-easy' },
+  { id: 'medium', label: 'NORMAL', className: 'diff-medium' },
+  { id: 'tough', label: 'TOUGH', className: 'diff-tough' },
+  { id: 'hard', label: 'HARD CORE', className: 'diff-hard' },
+];
+
 export function DifficultySelectionSection({ difficulty, onSelect }) {
   return (
     <div className="menu-section">
       <h3><span className="menu-section-num">03</span> DIFFICULTY</h3>
       <div className="btn-group-pixel diff-grid">
-        <button className={`diff-easy ${difficulty === 'easy' ? 'active' : ''}`} onClick={() => onSelect('easy')}>EASY</button>
-        <button className={`diff-medium ${difficulty === 'medium' ? 'active' : ''}`} onClick={() => onSelect('medium')}>NORMAL</button>
-        <button className={`diff-hard ${difficulty === 'hard' ? 'active' : ''}`} onClick={() => onSelect('hard')}>HARD CORE</button>
+        {DIFFICULTIES.map((d) => (
+          <button
+            key={d.id}
+            className={`${d.className} ${difficulty === d.id ? 'active' : ''}`}
+            onClick={() => onSelect(d.id)}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SIDES = [
+  { id: 'w', label: 'PLAY AS RED', hint: 'MOVES FIRST', className: 'side-red' },
+  { id: 'b', label: 'PLAY AS BLUE', hint: 'CPU MOVES FIRST', className: 'side-blue' },
+  { id: 'random', label: 'RANDOM', hint: 'SURPRISE ME', className: 'side-random' },
+];
+
+// Bot matches only: which army the human commands.
+export function PlayAsSection({ colorChoice, onSelect }) {
+  return (
+    <div className="menu-section">
+      <h3><span className="menu-section-num">04</span> CHOOSE YOUR SIDE</h3>
+      <div className="btn-group-pixel side-grid" role="group" aria-label="Choose your side">
+        {SIDES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={`${s.className} ${colorChoice === s.id ? 'active' : ''}`}
+            aria-pressed={colorChoice === s.id}
+            onClick={() => onSelect(s.id)}
+          >
+            <span className="side-sprite" aria-hidden="true">
+              {s.id === 'random' ? (
+                <>
+                  <PieceSprite code="wK" size={26} />
+                  <PieceSprite code="bK" size={26} />
+                </>
+              ) : (
+                <PieceSprite code={`${s.id}K`} size={32} />
+              )}
+            </span>
+            {s.label}
+            <span className="side-hint">{s.hint}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -71,15 +133,19 @@ export function DifficultySelectionSection({ difficulty, onSelect }) {
 export function TimeSelectionSection({ gameMode, timeMode, onSelect }) {
   return (
     <div className="menu-section">
-      <h3><span className="menu-section-num">{gameMode === 'bot' ? '04' : '03'}</span> TIME LIMIT</h3>
+      <h3><span className="menu-section-num">{gameMode === 'bot' ? '05' : '03'}</span> TIME LIMIT</h3>
       <div className="btn-group-pixel time-grid">
-        <button className={timeMode === 'none' ? 'active' : ''} onClick={() => onSelect('none')}>NO LIMIT</button>
-        <button className={timeMode === '0.5' ? 'active' : ''} onClick={() => onSelect('0.5')}>00:30</button>
-        <button className={timeMode === '1' ? 'active' : ''} onClick={() => onSelect('1')}>01:00</button>
-        <button className={timeMode === '5' ? 'active' : ''} onClick={() => onSelect('5')}>05:00</button>
-        <button className={timeMode === '10' ? 'active' : ''} onClick={() => onSelect('10')}>10:00</button>
-        <button className={timeMode === '30' ? 'active' : ''} onClick={() => onSelect('30')}>30:00</button>
+        {TIME_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            className={timeMode === preset.id ? 'active' : ''}
+            onClick={() => onSelect(preset.id)}
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
+      <p className="menu-section-note">M+S = MINUTES EACH, PLUS SECONDS ADDED AFTER EVERY MOVE</p>
     </div>
   );
 }

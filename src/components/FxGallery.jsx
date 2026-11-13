@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createElimination, EFFECT_POOLS, EFFECT_LABELS, FX_SOUND } from '../fx/eliminationFx';
+import { listEffects, getEffect } from '../effects/index.js';
 import { PieceSprite } from '../pixelPieces';
 
 const ATTACKERS = [
@@ -10,9 +10,30 @@ const ATTACKERS = [
   ['q', 'QUEEN'],
   ['k', 'KING'],
 ];
-const ALL_EFFECTS = ATTACKERS.flatMap(([type]) => EFFECT_POOLS[type].map((kind) => ({ kind, attacker: type })));
+// Rows: each piece's own finishers, the capture effects any piece can use,
+// then the effects for other moments (checkmate, promotion).
+const ROWS = [
+  ...ATTACKERS.map(([type, name]) => ({
+    key: type,
+    name,
+    sprites: [`w${type.toUpperCase()}`, `b${type.toUpperCase()}`],
+    effects: listEffects('capture').filter((e) => e.signature && e.attackers[0] === type).map((e) => ({ kind: e.id, attacker: type })),
+  })),
+  {
+    key: 'any',
+    name: 'ANY PIECE',
+    sprites: [],
+    effects: listEffects('capture').filter((e) => !e.signature).map((e) => ({ kind: e.id, attacker: e.attackers ? e.attackers[0] : 'q' })),
+  },
+  {
+    key: 'special',
+    name: 'SPECIAL',
+    sprites: [],
+    effects: listEffects().filter((e) => e.trigger !== 'capture').map((e) => ({ kind: e.id, attacker: 'q' })),
+  },
+].filter((row) => row.effects.length > 0);
+const ALL_EFFECTS = ROWS.flatMap((row) => row.effects);
 const VICTIMS = ['bQ', 'wR', 'bN', 'wB', 'bP', 'wQ', 'bR', 'wN', 'bB', 'wP'];
-const FX_SPEED = 0.65; // same pacing as in-game
 const STAGE_SQUARES = 5;
 
 // Preview every elimination finisher on a mini 5x5 board, one at a time or
@@ -20,11 +41,15 @@ const STAGE_SQUARES = 5;
 export function FxGallery({ onClose, play }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
+  const instanceRef = useRef(null);
   const queueRef = useRef([]);
   const victimRef = useRef(0);
   const [current, setCurrent] = useState(null); // { kind, attacker, victim, attackerColor }
 
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+  useEffect(() => () => {
+    cancelAnimationFrame(rafRef.current);
+    if (instanceRef.current) instanceRef.current.cleanup();
+  }, []);
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
@@ -36,6 +61,7 @@ export function FxGallery({ onClose, play }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     cancelAnimationFrame(rafRef.current);
+    if (instanceRef.current) instanceRef.current.cleanup();
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(rect.width * dpr);
@@ -45,19 +71,31 @@ export function FxGallery({ onClose, play }) {
     const victim = VICTIMS[victimRef.current++ % VICTIMS.length];
     const attackerColor = victim[0] === 'w' ? 'b' : 'w';
     const size = rect.width / STAGE_SQUARES;
-    const fx = createElimination({ kind: entry.kind, code: victim, x: rect.width / 2, y: rect.height / 2, size, attackerColor });
+    const effect = getEffect(entry.kind);
+    const instance = effect.create({
+      code: victim,
+      x: rect.width / 2,
+      y: rect.height / 2,
+      size,
+      attackerColor,
+      attackerCode: `${attackerColor}${entry.attacker.toUpperCase()}`,
+      from: { x: rect.width / 2 - size * 1.5, y: rect.height / 2 + size * 1.5 },
+    });
+    instanceRef.current = instance;
     setCurrent({ ...entry, victim, attackerColor });
-    play(FX_SOUND[entry.kind]);
+    if (effect.sound) play(effect.sound);
 
     const start = performance.now();
     const tick = (now) => {
-      const frame = Math.floor(((now - start) / (1000 / 60)) * FX_SPEED) + 1;
+      const elapsed = now - start;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rect.width, rect.height);
-      fx.draw(ctx, frame);
-      if (frame < fx.duration) {
+      instance.draw(ctx, Math.min(elapsed, effect.duration));
+      if (elapsed < effect.duration) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
+        instance.cleanup();
+        instanceRef.current = null;
         ctx.clearRect(0, 0, rect.width, rect.height);
         const next = queueRef.current.shift();
         if (next) {
@@ -101,7 +139,7 @@ export function FxGallery({ onClose, play }) {
             {current ? (
               <>
                 <PieceSprite code={`${current.attackerColor}${current.attacker.toUpperCase()}`} size={22} />
-                <span>{EFFECT_LABELS[current.kind]}</span>
+                <span>{getEffect(current.kind).name}</span>
               </>
             ) : (
               <span>PICK A FINISHER</span>
@@ -114,22 +152,21 @@ export function FxGallery({ onClose, play }) {
         </button>
 
         <div className="fx-list">
-          {ATTACKERS.map(([type, name]) => (
-            <div key={type} className="fx-row">
+          {ROWS.map((row) => (
+            <div key={row.key} className="fx-row">
               <div className="fx-row-head">
-                <PieceSprite code={`w${type.toUpperCase()}`} size={26} />
-                <PieceSprite code={`b${type.toUpperCase()}`} size={26} />
-                <span>{name}</span>
+                {row.sprites.map((code) => <PieceSprite key={code} code={code} size={26} />)}
+                <span>{row.name}</span>
               </div>
               <div className="fx-row-buttons">
-                {EFFECT_POOLS[type].map((kind) => (
+                {row.effects.map((entry) => (
                   <button
-                    key={kind}
+                    key={entry.kind}
                     type="button"
-                    className={`fx-btn ${current && current.kind === kind ? 'is-playing' : ''}`}
-                    onClick={() => playOne({ kind, attacker: type })}
+                    className={`fx-btn ${current && current.kind === entry.kind ? 'is-playing' : ''}`}
+                    onClick={() => playOne(entry)}
                   >
-                    {EFFECT_LABELS[kind]}
+                    {getEffect(entry.kind).name}
                   </button>
                 ))}
               </div>

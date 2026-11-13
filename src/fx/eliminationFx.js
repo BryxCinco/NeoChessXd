@@ -1,4 +1,19 @@
-import { SPRITES, PALETTE } from '../sprites/pieceSprites';
+import {
+  createBase,
+  drawSprite,
+  drawSpriteT,
+  drawText,
+  easeOut,
+  clamp01,
+  explodePixels,
+  makeEffect,
+  pixelDisc,
+  pixelRing,
+  rand,
+  spawn,
+  spriteImage,
+  spritePixels,
+} from '../effects/fxKit.js';
 
 // ── PIECE ELIMINATION EFFECTS ──
 // Every capture destroys the captured piece's ACTUAL sprite on the canvas,
@@ -15,6 +30,10 @@ import { SPRITES, PALETTE } from '../sprites/pieceSprites';
 // Effects are time-based (`frame` = 1/60 s since start), so they look the
 // same on 30, 60 and 120 Hz screens. Each one is a plain object:
 //   { duration, draw(ctx, frame) }
+//
+// The drawing helpers live in src/effects/fxKit.js. The finishers below are
+// wrapped as effect modules and registered in src/effects/classicEffects.js;
+// nothing else should call them directly.
 
 export const EFFECT_POOLS = {
   p: ['stomp', 'arrowRain', 'bubble'],
@@ -65,196 +84,6 @@ export const FX_SOUND = {
   nuke: 'nuclear_bomb',
   shatter: 'missile',
 };
-
-// Round-robin per attacker type (random starting point), so a game shows
-// every finisher instead of repeating one.
-const nextIndex = {};
-export function pickEffect(attackerType) {
-  const pool = EFFECT_POOLS[attackerType];
-  if (!pool) return 'shatter';
-  const i = nextIndex[attackerType] ?? Math.floor(Math.random() * pool.length);
-  nextIndex[attackerType] = (i + 1) % pool.length;
-  return pool[i];
-}
-const PIECE_VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-const TEAM = { w: '#e8282b', b: '#2f7bff' };
-
-// ── colour helpers ──
-const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-const lum = ([r, g, b]) => (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-const mix = (a, b, t) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
-const ICE_DARK = [27, 79, 138];
-const ICE_LIGHT = [230, 251, 255];
-const HOT_DARK = [40, 10, 6];
-const HOT_LIGHT = [255, 170, 40];
-const TINTS = {
-  ice: (rgb) => mix(ICE_DARK, ICE_LIGHT, lum(rgb)),
-  hot: (rgb) => mix(HOT_DARK, HOT_LIGHT, lum(rgb)),
-  white: () => '#ffffff',
-  dark: () => '#120a1a',
-  ash: (rgb) => mix([30, 28, 34], [175, 172, 180], lum(rgb)),
-  plasma: (rgb) => mix([70, 10, 100], [250, 200, 255], lum(rgb)),
-};
-
-// ── sprite caches (16x16 offscreen canvases + per-pixel lists) ──
-const spriteCache = new Map();
-function spriteImage(code, tint) {
-  const key = `${code}:${tint || ''}`;
-  if (spriteCache.has(key)) return spriteCache.get(key);
-  const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
-  const g = canvas.getContext('2d');
-  SPRITES[code].forEach((row, y) => {
-    for (let x = 0; x < 16; x++) {
-      const ch = row[x];
-      if (ch === '.') continue;
-      g.fillStyle = tint ? TINTS[tint](hexToRgb(PALETTE[ch])) : PALETTE[ch];
-      g.fillRect(x, y, 1, 1);
-    }
-  });
-  spriteCache.set(key, canvas);
-  return canvas;
-}
-
-const pixelCache = new Map();
-function spritePixels(code) {
-  if (pixelCache.has(code)) return pixelCache.get(code);
-  const list = [];
-  SPRITES[code].forEach((row, y) => {
-    for (let x = 0; x < 16; x++) {
-      if (row[x] !== '.') list.push({ px: x, py: y, color: PALETTE[row[x]], rgb: hexToRgb(PALETTE[row[x]]) });
-    }
-  });
-  pixelCache.set(code, list);
-  return list;
-}
-
-const rand = (a, b) => a + Math.random() * (b - a);
-
-// ── shared building blocks ──
-function createBase({ code, x, y, size, attackerColor }) {
-  const u = size / 16;
-  return {
-    code,
-    x,
-    y,
-    size,
-    u,
-    left: x - size / 2,
-    top: y - size / 2,
-    team: TEAM[attackerColor] || '#ffd83a',
-    particles: [],
-    lastFrame: 0,
-    value: PIECE_VALUE[code[1].toLowerCase()] || 0,
-  };
-}
-
-// Draws the victim sprite scaled around its bottom-centre.
-function drawSprite(ctx, fx, { tint, sx = 1, sy = 1, alpha = 1, dx = 0, dy = 0, srcRows } = {}) {
-  const img = spriteImage(fx.code, tint);
-  const w = fx.size * sx;
-  const h = fx.size * sy;
-  const left = fx.x - w / 2 + dx;
-  const top = fx.y + fx.size / 2 - h + dy;
-  ctx.globalAlpha = alpha;
-  if (srcRows) {
-    const [r0, r1] = srcRows; // only draw sprite rows r0..r1 (exclusive)
-    if (r1 > r0) ctx.drawImage(img, 0, r0, 16, r1 - r0, left, top + (r0 / 16) * h, w, ((r1 - r0) / 16) * h);
-  } else {
-    ctx.drawImage(img, left, top, w, h);
-  }
-  ctx.globalAlpha = 1;
-}
-
-// p: { x, y, vx, vy, s, color, life, max, g, drag, colors? }
-function spawn(fx, p) {
-  fx.particles.push({ g: 0, drag: 1, ...p, max: p.life });
-}
-
-function stepParticles(fx) {
-  for (const p of fx.particles) {
-    if (p.delay > 0) {
-      p.delay--;
-      continue;
-    }
-    p.vx *= p.drag;
-    p.vy = p.vy * p.drag + p.g;
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life--;
-    if (p.spin) {
-      p.angle += p.spin;
-      p.dist *= p.pull;
-      p.x = p.cx + Math.cos(p.angle) * p.dist;
-      p.y = p.cy + Math.sin(p.angle) * p.dist;
-    }
-  }
-  fx.particles = fx.particles.filter((p) => p.life > 0 && (!p.spin || p.dist > 0.6));
-}
-
-function drawParticles(ctx, fx) {
-  for (const p of fx.particles) {
-    const t = p.life / p.max;
-    ctx.globalAlpha = p.fade === false ? 1 : Math.min(1, t * 2);
-    ctx.fillStyle = p.colors ? p.colors[Math.min(p.colors.length - 1, Math.floor((1 - t) * p.colors.length))] : p.color;
-    const s = p.shrink ? Math.max(1, p.s * (p.spin ? Math.min(1, p.dist / (p.d0 || 1) + 0.2) : t)) : p.s;
-    ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), Math.ceil(s), Math.ceil(s));
-  }
-  ctx.globalAlpha = 1;
-}
-
-// Every victim pixel → one particle, starting where it sits on the board.
-function explodePixels(fx, makeVelocity, extra = {}, tint) {
-  for (const px of spritePixels(fx.code)) {
-    const x = fx.left + (px.px + 0.5) * fx.u;
-    const y = fx.top + (px.py + 0.5) * fx.u;
-    const [vx, vy] = makeVelocity(x, y, px);
-    spawn(fx, {
-      x, y, vx, vy,
-      s: fx.u * 1.05,
-      color: tint ? TINTS[tint](px.rgb) : px.color,
-      life: rand(22, 34),
-      ...extra,
-    });
-  }
-}
-
-// Mario-style "+N" score popup.
-function drawScore(ctx, fx, frame, start = 8) {
-  if (!fx.value || frame < start) return;
-  const t = (frame - start) / (fx.duration - start);
-  const fontSize = Math.max(10, Math.round(fx.size * 0.3));
-  ctx.globalAlpha = t > 0.75 ? (1 - t) / 0.25 : 1;
-  ctx.font = `${fontSize}px "Press Start 2P", monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = Math.max(3, fontSize / 3);
-  ctx.strokeStyle = '#120a1a';
-  const ty = fx.y - fx.size * 0.1 - t * fx.size * 0.7;
-  ctx.strokeText(`+${fx.value}`, fx.x, ty);
-  ctx.fillStyle = '#ffd83a';
-  ctx.fillText(`+${fx.value}`, fx.x, ty);
-  ctx.globalAlpha = 1;
-}
-
-// Runs physics once per elapsed 60 Hz frame, then draws once.
-function makeEffect(fx, duration, tick, render) {
-  fx.duration = duration;
-  fx.draw = (ctx, frame) => {
-    const target = Math.min(frame, fx.lastFrame + 4); // don't fast-forward huge gaps
-    while (fx.lastFrame < target) {
-      fx.lastFrame++;
-      tick(fx.lastFrame);
-      stepParticles(fx);
-    }
-    ctx.imageSmoothingEnabled = false;
-    render(ctx, fx.lastFrame);
-    drawParticles(ctx, fx);
-    drawScore(ctx, fx, fx.lastFrame);
-  };
-  return fx;
-}
 
 // ── PAWN: STOMP ──
 function stomp(opts) {
@@ -579,62 +408,7 @@ function shatter(opts) {
   });
 }
 
-// ── extra drawing helpers ──
-const easeOut = (t) => 1 - (1 - t) ** 2;
-const clamp01 = (t) => Math.max(0, Math.min(1, t));
 
-// Sprite drawn with translate / rotate / scale. pivot 'center' or 'bottom'.
-function drawSpriteT(ctx, fx, { dx = 0, dy = 0, rot = 0, scale = 1, alpha = 1, tint, pivot = 'center' } = {}) {
-  const img = spriteImage(fx.code, tint);
-  const s = fx.size * scale;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  if (pivot === 'bottom') {
-    ctx.translate(fx.x + dx, fx.y + fx.size / 2 + dy);
-    if (rot) ctx.rotate(rot);
-    ctx.drawImage(img, -s / 2, -s, s, s);
-  } else {
-    ctx.translate(fx.x + dx, fx.y + dy);
-    if (rot) ctx.rotate(rot);
-    ctx.drawImage(img, -s / 2, -s / 2, s, s);
-  }
-  ctx.restore();
-}
-
-// Filled circle built from horizontal pixel rows.
-function pixelDisc(ctx, cx, cy, r, color, step) {
-  if (r <= 0) return;
-  const st = Math.max(1, Math.round(step));
-  ctx.fillStyle = color;
-  for (let yy = -r; yy <= r; yy += st) {
-    const half = Math.sqrt(Math.max(0, r * r - yy * yy));
-    ctx.fillRect(Math.round(cx - half), Math.round(cy + yy), Math.round(half * 2), st);
-  }
-}
-
-// Ring of square dots.
-function pixelRing(ctx, cx, cy, r, color, dot, count = 24, phase = 0) {
-  ctx.fillStyle = color;
-  const d = Math.max(1, Math.round(dot));
-  for (let i = 0; i < count; i++) {
-    const a = phase + (i / count) * Math.PI * 2;
-    ctx.fillRect(Math.round(cx + Math.cos(a) * r - d / 2), Math.round(cy + Math.sin(a) * r - d / 2), d, d);
-  }
-}
-
-function drawText(ctx, fx, text, x, y, color, scale = 0.28) {
-  const fontSize = Math.max(9, Math.round(fx.size * scale));
-  ctx.font = `${fontSize}px "Press Start 2P", monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = Math.max(3, fontSize / 3);
-  ctx.strokeStyle = '#120a1a';
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
-}
-
-// ── BISHOP: THUNDER — lightning strike, x-ray flicker, crumbles to ash ──
 function thunder(opts) {
   const fx = createBase(opts);
   const { u, size } = fx;
@@ -1210,7 +984,8 @@ function plasma(opts) {
   });
 }
 
-const FACTORIES = {
+// Every finisher factory by id (see src/effects/classicEffects.js).
+export const FINISHERS = {
   stomp, arrowRain, bubble,
   slash, batSwarm, sandworm,
   freeze, thunder, plasma,
@@ -1220,7 +995,7 @@ const FACTORIES = {
   shatter,
 };
 
-export function createElimination({ kind, code, x, y, size, attackerColor }) {
-  const make = FACTORIES[kind] || shatter;
-  return make({ code, x, y, size, attackerColor });
-}
+// Length of each finisher in 60 Hz frames (the number passed to makeEffect).
+export const FINISHER_FRAMES = Object.fromEntries(
+  Object.entries(FINISHERS).map(([id, make]) => [id, make({ code: 'wP', x: 0, y: 0, size: 16, attackerColor: 'w' }).duration])
+);

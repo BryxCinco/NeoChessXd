@@ -1,6 +1,7 @@
 import { Chess } from 'chess.js';
+import { pickBookMove } from './openingBook';
 
-// ── NEO CHESS DX BOT ENGINE ──
+// ── CHESS FANTASY BOT ENGINE ──
 // Negamax + alpha-beta + quiescence search, with piece-square tables and
 // an incrementally-updated evaluation. Uses chess.js' internal move API
 // (_moves / _makeMove / _undoMove) because the public move() recomputes SAN
@@ -102,8 +103,14 @@ const QSIDE_CASTLE = 64;
 // `noise` = random centipawns added per root move so the bot isn't
 // predictable, `timeMs` = search budget (iterative deepening stops there).
 export const DIFFICULTY = {
-  easy: { maxDepth: 1, quiescence: false, noise: 120, blunder: 0.3, timeMs: 150 },
+  // `bookPlies`: how many half-moves of opening book the level follows
+  // (missing = the whole book). EASY knows only the first two moves of each
+  // opening, then plays its own (weak, random-ish) moves.
+  easy: { maxDepth: 1, quiescence: false, noise: 120, blunder: 0.3, timeMs: 150, bookPlies: 4 },
   medium: { maxDepth: 2, quiescence: true, noise: 30, blunder: 0.05, timeMs: 500 },
+  // Between NORMAL and HARD CORE: looks 4 plies ahead, never blunders on
+  // purpose, but a little noise keeps it from always playing the top move.
+  tough: { maxDepth: 4, quiescence: true, noise: 12, blunder: 0, timeMs: 900 },
   hard: { maxDepth: 5, quiescence: true, noise: 0, blunder: 0, timeMs: 1500 },
 };
 
@@ -361,11 +368,19 @@ export function evaluatePosition(fen) {
 // Public entry point: returns { from, to, promotion } or null.
 // `pgn` (optional) is the game so far; pass it so the bot can avoid — or,
 // when it is losing, aim for — a draw by repetition.
-export function findBestMove(fen, difficulty = 'medium', pgn = null) {
+// `useBook: false` skips the opening book (used for hints and tests that
+// need the search itself).
+export function findBestMove(fen, difficulty = 'medium', pgn = null, { useBook = true } = {}) {
   const profile = DIFFICULTY[difficulty] || DIFFICULTY.medium;
   const game = loadPosition(fen, pgn);
   const legal = game.moves({ verbose: true });
   if (legal.length === 0) return null;
+
+  // Still in a known opening? Play a book move (varies from game to game).
+  if (useBook) {
+    const bookMove = pickBookMove(game, Math.random, profile.bookPlies ?? Infinity);
+    if (bookMove) return bookMove;
+  }
 
   if (Math.random() < profile.blunder) {
     const m = legal[Math.floor(Math.random() * legal.length)];
