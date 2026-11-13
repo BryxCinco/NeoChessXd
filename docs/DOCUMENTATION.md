@@ -1,10 +1,10 @@
-# NEO CHESS DX — Project Documentation
+# CHESS FANTASY — Project Documentation
 
 Last updated: Oct 16, 2026
 
 ## Overview
 
-NEO CHESS DX is a browser chess game in 8-bit pixel-art style: a plumber-kingdom RED army against a speed-zone hedgehog BLUE army, with a CPU opponent at three difficulty levels and 17 animated elimination effects. It runs on desktop, tablets and phones from a single React app.
+CHESS FANTASY is a browser chess game in 8-bit pixel-art style: a plumber-kingdom RED army against a speed-zone hedgehog BLUE army, with a CPU opponent at three difficulty levels and 17 animated elimination effects. It runs on desktop, tablets and phones from a single React app.
 
 - Live: [neo-chess-xd.vercel.app](https://neo-chess-xd.vercel.app)
 - Source: [github.com/BryxCinco/NeoChessXd](https://github.com/BryxCinco/NeoChessXd)
@@ -98,7 +98,7 @@ Pieces bob and blink with stepped CSS animations.
 
 **Screens**
 
-- Main menu: animated NEO CHESS DX logo, RED vs BLUE army line-up, and FX GALLERY button; phones and tablets get a step-by-step setup wizard, desktops a single config panel plus saved matches
+- Main menu: animated CHESS FANTASY logo, RED vs BLUE army line-up, and FX GALLERY button; phones and tablets get a step-by-step setup wizard, desktops a single config panel plus saved matches
 - Loading: a fighting-game VS screen with sliding team panels, 3-2-1-GO! countdown, pixel load bar and a random tip
 - Game: opponent bar above the board, your bar below; a sidebar with status and scoresheet on desktop, stacked underneath on phones, beside the board on landscape phones
 - Game over: the winning king's sprite and the result, with replay or main menu

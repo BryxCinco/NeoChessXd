@@ -248,10 +248,10 @@ describe('CountdownOverlay', () => {
 describe('PixelLogo and piece sprites', () => {
   it('the logo is one labelled heading by default, or any other tag', () => {
     const { rerender } = render(<PixelLogo />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Neo Chess DX' })).toHaveClass('pixel-logo-lg');
+    expect(screen.getByRole('heading', { level: 1, name: 'Chess Fantasy' })).toHaveClass('pixel-logo-lg');
     rerender(<PixelLogo size="sm" as="div" />);
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Neo Chess DX')).toHaveClass('pixel-logo-sm');
+    expect(screen.getByLabelText('Chess Fantasy')).toHaveClass('pixel-logo-sm');
   });
 
   it('there is a board piece renderer for all 12 pieces', () => {

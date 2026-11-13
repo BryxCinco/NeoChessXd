@@ -128,7 +128,7 @@ describe('PGN export', () => {
 
   it('formats dates the PGN way and builds a file name', () => {
     expect(pgnDate(date)).toBe('2026.01.05');
-    expect(pgnFileName(date)).toBe('neo-chess-dx-2026-01-05-0907.pgn');
+    expect(pgnFileName(date)).toBe('chess-fantasy-2026-01-05-0907.pgn');
   });
 
   it('writes the six required header tags and the moves, and reads back as the same game', () => {
@@ -136,7 +136,7 @@ describe('PGN export', () => {
     const pgn = buildPgn({ game, gameMode: '1v1', isGameOver: false, winner: null, date, site: 'neo-chess-xd.vercel.app' });
 
     for (const tag of [
-      '[Event "NEO CHESS DX casual game"]',
+      '[Event "CHESS FANTASY casual game"]',
       '[Site "neo-chess-xd.vercel.app"]',
       '[Date "2026.01.05"]',
       '[White "Player 1 (Red)"]',
@@ -150,7 +150,7 @@ describe('PGN export', () => {
     const reloaded = new Chess();
     reloaded.loadPgn(pgn);
     expect(reloaded.fen()).toBe(game.fen());
-    expect(game.pgn()).not.toContain('NEO CHESS DX'); // the live game is not modified
+    expect(game.pgn()).not.toContain('CHESS FANTASY'); // the live game is not modified
   });
 
   it('falls back to the page host for Site', () => {

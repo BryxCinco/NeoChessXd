@@ -757,7 +757,7 @@ describe('5.6 exporting the PGN', () => {
     view.play(...FOOLS_MATE);
     const pgn = view.chess().exportPgn();
 
-    expect(pgn).toContain('[Event "NEO CHESS DX casual game"]');
+    expect(pgn).toContain('[Event "CHESS FANTASY casual game"]');
     expect(pgn).toMatch(/\[Site ".+"\]/);
     expect(pgn).toContain('[Date "2026.11.12"]');
     expect(pgn).toContain('[White "Player 1 (Red)"]');
@@ -795,9 +795,9 @@ describe('5.6 exporting the PGN', () => {
     const view = setup();
     view.play(['e2', 'e4']);
     const before = view.chess().game.pgn();
-    expect(view.chess().exportPgn()).toContain('NEO CHESS DX');
+    expect(view.chess().exportPgn()).toContain('CHESS FANTASY');
     expect(view.chess().game.pgn()).toBe(before);
-    expect(before).not.toContain('NEO CHESS DX');
+    expect(before).not.toContain('CHESS FANTASY');
   });
 });
 

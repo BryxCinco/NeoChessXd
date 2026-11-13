@@ -29,7 +29,7 @@ export function buildPgn({ game, gameMode, difficulty, playerColor, isGameOver, 
   copy.loadPgn(game.pgn());
   const names = playerNames({ gameMode, difficulty, playerColor });
   const where = site || (typeof window !== 'undefined' && window.location ? window.location.host : '') || '?';
-  copy.setHeader('Event', 'NEO CHESS DX casual game');
+  copy.setHeader('Event', 'CHESS FANTASY casual game');
   copy.setHeader('Site', where);
   copy.setHeader('Date', pgnDate(date));
   copy.setHeader('White', names.white);
@@ -39,7 +39,7 @@ export function buildPgn({ game, gameMode, difficulty, playerColor, isGameOver, 
 }
 
 export const pgnFileName = (date = new Date()) =>
-  `neo-chess-dx-${pgnDate(date).replace(/\./g, '-')}-${pad(date.getHours())}${pad(date.getMinutes())}.pgn`;
+  `chess-fantasy-${pgnDate(date).replace(/\./g, '-')}-${pad(date.getHours())}${pad(date.getMinutes())}.pgn`;
 
 // Resolves true when the text reached the clipboard.
 export async function copyText(text) {

@@ -1,4 +1,4 @@
-# NEO CHESS DX
+# CHESS FANTASY
 
 An 8-bit pixel-art chess game for the browser: a plumber-kingdom **RED army** against a speed-zone hedgehog **BLUE army**, with a CPU opponent at three difficulty levels and 17 animated elimination effects. It runs on desktop, tablets and phones.
 

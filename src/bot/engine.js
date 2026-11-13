@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js';
 import { pickBookMove } from './openingBook';
 
-// ── NEO CHESS DX BOT ENGINE ──
+// ── CHESS FANTASY BOT ENGINE ──
 // Negamax + alpha-beta + quiescence search, with piece-square tables and
 // an incrementally-updated evaluation. Uses chess.js' internal move API
 // (_moves / _makeMove / _undoMove) because the public move() recomputes SAN

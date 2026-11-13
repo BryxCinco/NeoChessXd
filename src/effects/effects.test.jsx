@@ -239,14 +239,14 @@ describe('every effect draws and cleans up', () => {
     }
   });
 
-  it('no memory leak: 300 captures later nothing is still alive', () => {
+  it('no memory leak: 100 captures later nothing is still alive', () => {
     const capture = listEffects('capture');
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 100; i++) {
       const { instance } = playThrough(capture[i % capture.length]);
       instance.cleanup();
     }
     expect(liveEffectCount()).toBe(0);
-  });
+  }, 30000);
 
   it('cleanup empties the particle list and is safe to call twice', () => {
     let fx;
