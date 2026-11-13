@@ -31,6 +31,43 @@ Each entry says what the issue is, why it matters, and what fixing it would take
   working either way, since ids are only compared for equality.
 - **Status:** minor, not blocking.
 
+## Intentional behaviour (not bugs)
+
+### Playing BLUE: the CPU's first move cannot be undone straight away
+
+- **Where:** `src/hooks/useChessGame.js`, `canUndo`.
+- **What:** when you play BLUE the CPU (RED) moves first. UNDO stays disabled
+  until you have made a move of your own.
+- **Why:** undo takes back *your* last move together with the CPU's reply. With
+  only the CPU's opening move on the board there is nothing of yours to take
+  back, and undoing it would just make the CPU move again.
+
+### RANDOM side is re-rolled on every rematch
+
+- **Where:** `src/hooks/useChessGame.js`, `assignColors`.
+- **What:** with "RANDOM" chosen, REMATCH picks a side again, so you may get the
+  same colour twice or switch.
+- **Why:** RANDOM means "surprise me every game". To keep a colour, pick RED or
+  BLUE in the menu. A saved or refreshed game always keeps the colour it had.
+
+### EASY follows the opening book for two moves only
+
+- **Where:** `src/bot/engine.js`, `DIFFICULTY.easy.bookPlies`.
+- **What:** EASY plays known opening moves for the first two moves of each
+  side, then switches to its own shallow, noisy search. The other levels
+  follow the book to the end of each line (four or five moves).
+- **Why:** it keeps EASY beginner-friendly. A sensible start, but no long
+  stretch of memorised theory.
+
+### The fixed top buttons can sit over the board when the page is scrolled
+
+- **Where:** `.top-controls-row` in `src/App.jsx`.
+- **What:** on very short screens (for example 320x568) the match is taller
+  than the screen. Scrolling down moves the board under the fixed UNDO / MENU /
+  REDO / HINT row.
+- **Why it was left:** the buttons have to stay reachable. A match now always
+  opens scrolled to the top, where nothing overlaps.
+
 ## Test coverage limits
 
 The test suite runs in jsdom, which has no Web Audio API and no canvas. Code

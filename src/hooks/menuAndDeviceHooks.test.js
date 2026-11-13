@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { useMenuWizard } from './useMenuWizard';
-import { useResponsiveLayout, useScrollLock } from './useResponsiveLayout';
+import { useResponsiveLayout, useScrollLock, useScrollTopOnChange } from './useResponsiveLayout';
 import { useAudio, useBgmLoop } from './useAudio';
 import { playRetroSound, startRetroBGM } from '../audioEngine';
 
@@ -139,6 +139,33 @@ describe('useScrollLock', () => {
     rerender({ lock: true });
     unmount();
     expect(document.body.style.overflow).toBe('');
+  });
+});
+
+describe('useScrollTopOnChange', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('scrolls to the top when the screen changes, and only then', () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const { rerender } = renderHook(({ screen }) => useScrollTopOnChange(screen), { initialProps: { screen: false } });
+    scrollTo.mockClear();
+
+    rerender({ screen: false });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    rerender({ screen: true }); // menu → game
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' });
+
+    rerender({ screen: false }); // game → menu
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+  });
+
+  it('never throws where scrolling is unavailable', () => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {
+      throw new Error('not implemented');
+    });
+    expect(() => renderHook(() => useScrollTopOnChange(true))).not.toThrow();
   });
 });
 

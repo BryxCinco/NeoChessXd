@@ -91,6 +91,44 @@ describe('opening book', () => {
   });
 });
 
+describe('EASY only knows the first two moves of the book', () => {
+  it('the depth cap stops the book after that many half-moves', () => {
+    const afterThree = playMoves(['e4', 'e5', 'Nf3']);
+    expect(pickBookMove(afterThree, () => 0, Infinity)).not.toBeNull();
+    expect(pickBookMove(afterThree, () => 0, 4)).not.toBeNull(); // ply 4 is still book
+    const afterFour = playMoves(['e4', 'e5', 'Nf3', 'Nc6']);
+    expect(pickBookMove(afterFour, () => 0, 4)).toBeNull();
+    expect(pickBookMove(afterFour, () => 0)).not.toBeNull(); // no cap: still in book
+    expect(pickBookMove(new Chess(), () => 0, 0)).toBeNull();
+  });
+
+  it('EASY has a 2-move cap; the other levels follow the whole book', () => {
+    expect(DIFFICULTY.easy.bookPlies).toBe(4);
+    for (const level of ['medium', 'tough', 'hard']) expect(DIFFICULTY[level].bookPlies).toBeUndefined();
+  });
+
+  it('EASY still opens from the book, so its games start sensibly', () => {
+    const firstMoves = OPENING_LINES.map((line) => line[0]);
+    for (let i = 0; i < 10; i++) {
+      const move = findBestMove(START_FEN, 'easy', '');
+      const san = new Chess().move(move).san;
+      expect(firstMoves).toContain(san);
+    }
+  });
+
+  it('after two moves each EASY is on its own, while NORMAL keeps following theory', () => {
+    // Ruy Lopez after 3. Bb5: the only book reply is 3... a6.
+    const game = playMoves(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+    const sanOf = (move) => new Chess(game.fen()).move(move).san;
+
+    for (let i = 0; i < 5; i++) expect(sanOf(findBestMove(game.fen(), 'medium', game.pgn()))).toBe('a6');
+
+    const easyReplies = new Set();
+    for (let i = 0; i < 40; i++) easyReplies.add(sanOf(findBestMove(game.fen(), 'easy', game.pgn())));
+    expect(easyReplies.size).toBeGreaterThan(1); // not a single memorised answer any more
+  });
+});
+
 describe('the bot uses the book', () => {
   it('opens with a book move, and varies it', () => {
     const firstMoves = new Set();

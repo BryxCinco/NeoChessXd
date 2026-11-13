@@ -47,10 +47,14 @@ export function bookCandidates(history) {
 // Returns { from, to, promotion } for a book move, or null when the game is
 // out of book. `game` must carry its move history (loaded from a PGN) and
 // must have started from the normal starting position.
-export function pickBookMove(game, random = Math.random) {
+// `maxPlies` caps how deep into the book the bot follows: once that many
+// half-moves have been played it is on its own (EASY uses this, so a
+// beginner is not facing eight moves of memorised theory).
+export function pickBookMove(game, random = Math.random, maxPlies = Infinity) {
   const verbose = game.history({ verbose: true });
   const startedNormally = (verbose.length ? verbose[0].before : game.fen()) === START_FEN;
   if (!startedNormally) return null;
+  if (verbose.length >= maxPlies) return null;
 
   const candidates = bookCandidates(verbose.map((m) => m.san));
   if (candidates.length === 0) return null;

@@ -64,3 +64,16 @@ export function useScrollLock(shouldLock) {
     };
   }, [shouldLock]);
 }
+
+// Jumps back to the top whenever `screen` changes (menu <-> game). Without
+// it a short phone that scrolled down to reach the START button would open
+// the match already scrolled, with the fixed top buttons over the board.
+export function useScrollTopOnChange(screen) {
+  useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    } catch {
+      // nothing to scroll (old browser / test environment)
+    }
+  }, [screen]);
+}

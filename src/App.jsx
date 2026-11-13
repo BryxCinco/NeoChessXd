@@ -6,7 +6,7 @@ import { useAudio, useBgmLoop } from './hooks/useAudio';
 import { useChessGame } from './hooks/useChessGame';
 import { useSavedMatches } from './hooks/useSavedMatches';
 import { useMenuWizard } from './hooks/useMenuWizard';
-import { useResponsiveLayout, useScrollLock } from './hooks/useResponsiveLayout';
+import { useResponsiveLayout, useScrollLock, useScrollTopOnChange } from './hooks/useResponsiveLayout';
 import { useSettings } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { copyText, downloadText, pgnFileName } from './game/pgnExport';
@@ -41,6 +41,7 @@ function App() {
     triggerInteractiveAudioContext: audio.triggerInteractiveAudioContext,
   });
 
+  useScrollTopOnChange(chess.gameStarted || chess.isStarting);
   useScrollLock(chess.isStarting || !!activeModal || !!chess.pendingPromotion || showGallery);
 
   function executeQuitToMenu() {

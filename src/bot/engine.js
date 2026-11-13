@@ -103,7 +103,10 @@ const QSIDE_CASTLE = 64;
 // `noise` = random centipawns added per root move so the bot isn't
 // predictable, `timeMs` = search budget (iterative deepening stops there).
 export const DIFFICULTY = {
-  easy: { maxDepth: 1, quiescence: false, noise: 120, blunder: 0.3, timeMs: 150 },
+  // `bookPlies`: how many half-moves of opening book the level follows
+  // (missing = the whole book). EASY knows only the first two moves of each
+  // opening, then plays its own (weak, random-ish) moves.
+  easy: { maxDepth: 1, quiescence: false, noise: 120, blunder: 0.3, timeMs: 150, bookPlies: 4 },
   medium: { maxDepth: 2, quiescence: true, noise: 30, blunder: 0.05, timeMs: 500 },
   // Between NORMAL and HARD CORE: looks 4 plies ahead, never blunders on
   // purpose, but a little noise keeps it from always playing the top move.
@@ -375,7 +378,7 @@ export function findBestMove(fen, difficulty = 'medium', pgn = null, { useBook =
 
   // Still in a known opening? Play a book move (varies from game to game).
   if (useBook) {
-    const bookMove = pickBookMove(game);
+    const bookMove = pickBookMove(game, Math.random, profile.bookPlies ?? Infinity);
     if (bookMove) return bookMove;
   }
 

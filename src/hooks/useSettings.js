@@ -7,7 +7,7 @@ export const SETTINGS_KEY = 'neochess_settings';
 export const BOARD_THEMES = {
   classic: { name: 'CLASSIC', light: '#e8cfa6', dark: '#2e2017' },
   gameboy: { name: 'GAME BOY', light: '#9bbc0f', dark: '#306230' },
-  nes: { name: 'NES', light: '#fcd8a8', dark: '#c84c0c' },
+  nes: { name: 'NES', light: '#fcd8a8', dark: '#8c3008' },
   amber: { name: 'CRT AMBER', light: '#ffb000', dark: '#4a2c00' },
 };
 
