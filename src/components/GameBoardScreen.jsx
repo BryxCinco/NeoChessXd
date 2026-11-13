@@ -6,9 +6,6 @@ import { PlayerBar } from './PlayerBar';
 
 // Gold frame drawn with box-shadow (not border) so it never adds to the
 // measured board width and pushes the h-file off narrow screens.
-const BOARD_STYLE = {
-  boxShadow: '0 0 0 5px #ffcc00',
-};
 const DEFAULT_THEME = { light: '#e8cfa6', dark: '#2e2017' };
 const LOW_TIME_SECONDS = 20;
 
@@ -53,6 +50,7 @@ export function GameBoardScreen({
   // from useChessGame with stable identities.
   const darkSquareStyle = useMemo(() => ({ backgroundColor: theme.dark }), [theme.dark]);
   const lightSquareStyle = useMemo(() => ({ backgroundColor: theme.light }), [theme.light]);
+  const boardStyle = useMemo(() => ({ boxShadow: `0 0 0 5px ${(theme.boardTheme && theme.boardTheme.border) || '#ffcc00'}` }), [theme]);
   const board = useMemo(() => (
     <Chessboard
       boardWidth={boardWidth}
@@ -64,13 +62,13 @@ export function GameBoardScreen({
       isDraggablePiece={isDraggablePiece}
       customPieces={pixelPieces}
       customSquareStyles={customSquareStyles}
-      customBoardStyle={BOARD_STYLE}
+      customBoardStyle={boardStyle}
       customDarkSquareStyle={darkSquareStyle}
       customLightSquareStyle={lightSquareStyle}
       animationDuration={animations ? 180 : 0}
     />
   ), [boardWidth, boardOrientation, displayPosition, onDrop, onSquareClick, onPieceDragBegin, isDraggablePiece,
-    customSquareStyles, darkSquareStyle, lightSquareStyle, animations]);
+    customSquareStyles, darkSquareStyle, lightSquareStyle, boardStyle, animations]);
 
   const turn = game.turn();
   const timed = timeMode !== 'none';

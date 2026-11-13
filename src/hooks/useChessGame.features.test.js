@@ -19,6 +19,7 @@ const fx = vi.hoisted(() => ({
     return 'thunder';
   }),
   triggerCaptureAnimation: vi.fn(),
+  triggerEffect: vi.fn(),
   clearAnimations: vi.fn(),
 }));
 vi.mock('../usePixelAnimation', () => ({
@@ -835,5 +836,76 @@ describe('5.8 the animations setting', () => {
     view.play(...FOOLS_MATE);
     act(() => vi.advanceTimersByTime(2000));
     expect(fx.triggerCaptureAnimation).toHaveBeenCalledWith('e1', null, 'cage');
+  });
+});
+
+// ─────────────────────────────── 6.6 ───────────────────────────────
+describe('6.6 effects wiring', () => {
+  const capture = [['e2', 'e4'], ['d7', 'd5'], ['e4', 'd5']];
+  const PROMOTION_FEN = '8/P6k/8/8/8/8/8/K7 w - - 0 1';
+
+  it('tells the effect which square the capturing piece came from', () => {
+    const view = setup(save(), { animations: true });
+    view.play(...capture);
+    const extra = fx.triggerElimination.mock.calls[0][5];
+    expect(extra.from).toBe('e4');
+    expect(typeof extra.onEffect).toBe('function');
+  });
+
+  it('an effect that draws the capturing piece itself hides both pieces until the move lands', () => {
+    let land;
+    fx.triggerElimination.mockImplementationOnce((_square, _victim, _piece, _color, onComplete, extra) => {
+      land = onComplete;
+      extra.onEffect({ hidesAttacker: true });
+      return 'thud';
+    });
+    const view = setup(save(), { animations: true });
+    view.play(...capture);
+
+    const during = view.chess().displayPosition;
+    expect(typeof during).toBe('object');
+    expect(during).not.toHaveProperty('d5'); // the victim
+    expect(during).not.toHaveProperty('e4'); // the attacker
+    expect(during.e1).toBe('wK');
+    expect(audio.play).toHaveBeenCalledWith('thud');
+
+    act(() => land());
+    expect(view.chess().displayPosition).toBe(view.chess().game.fen());
+    expect(view.chess().game.get('d5')).toMatchObject({ type: 'p', color: 'w' });
+  });
+
+  it('an ordinary effect hides only the captured piece', () => {
+    fx.triggerElimination.mockImplementationOnce((_square, _victim, _piece, _color, _onComplete, extra) => {
+      extra.onEffect({ hidesAttacker: false });
+      return 'sizzle';
+    });
+    const view = setup(save(), { animations: true });
+    view.play(...capture);
+    const during = view.chess().displayPosition;
+    expect(during).not.toHaveProperty('d5');
+    expect(during.e4).toBe('wP');
+  });
+
+  it('a promotion plays the promotion effect on the new piece', () => {
+    const view = setup(save({ fen: PROMOTION_FEN }), { animations: true });
+    view.drop('a7', 'a8');
+    act(() => view.chess().handlePromotionSelection('q'));
+    expect(view.chess().game.get('a8')).toMatchObject({ type: 'q', color: 'w' });
+    expect(fx.triggerEffect).toHaveBeenCalledWith('promotion', 'a8');
+  });
+
+  it('with animations off a promotion has no effect', () => {
+    const view = setup(save({ fen: PROMOTION_FEN }), { animations: false });
+    view.drop('a7', 'a8');
+    act(() => view.chess().handlePromotionSelection('q'));
+    expect(view.chess().game.get('a8')).toMatchObject({ type: 'q' });
+    expect(fx.triggerEffect).not.toHaveBeenCalled();
+  });
+
+  it('an ordinary move plays no effect', () => {
+    const view = setup(save(), { animations: true });
+    view.play(['e2', 'e4']);
+    expect(fx.triggerEffect).not.toHaveBeenCalled();
+    expect(fx.triggerElimination).not.toHaveBeenCalled();
   });
 });

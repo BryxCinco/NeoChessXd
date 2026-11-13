@@ -111,7 +111,7 @@ button {
 .pixel-title {
   margin: 0;
   font-size: 2.2rem;
-  color: #ffcc00;
+  color: var(--accent);
   letter-spacing: -1px;
   text-shadow: 4px 4px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
 }
@@ -122,7 +122,7 @@ button {
 
 .header-subtitle {
   font-size: 0.75rem;
-  color: #00ffcc;
+  color: var(--accent-2);
   margin-top: 10px;
   letter-spacing: 2px;
   display: flex;
@@ -134,7 +134,7 @@ button {
 .pixel-diamond {
   width: 8px;
   height: 8px;
-  background: #ffcc00;
+  background: var(--accent);
   display: inline-block;
   transform: rotate(45deg);
   box-shadow: 0 0 0 2px #000;
@@ -150,8 +150,8 @@ button {
   right: 12px;
   z-index: 600;
   background: #000;
-  color: #ffcc00;
-  border: 3px solid #ffcc00;
+  color: var(--accent);
+  border: 3px solid var(--accent);
   font-family: 'Press Start 2P', monospace;
   font-size: 0.7rem;
   padding: 10px 14px;
@@ -172,7 +172,7 @@ button {
 
 /* ── RETRO ARCADE BENTO MODULES ── */
 .bento-pixel {
-  background: #2a2d32;
+  background: var(--panel-bg, #2a2d32);
   border: 4px solid #000;
   box-shadow: 4px 4px 0px #000, inset 4px 4px 0px rgba(255,255,255,0.1);
   border-radius: 0px; /* Literal Crisp 8-Bit Squares */
@@ -199,8 +199,8 @@ button {
 
 .audio-toggle-btn {
   background: #000;
-  color: #00ffcc;
-  border: 3px solid #00ffcc;
+  color: var(--accent-2);
+  border: 3px solid var(--accent-2);
   font-family: 'Press Start 2P', monospace;
   font-size: 0.65rem;
   padding: 8px 12px;
@@ -224,8 +224,8 @@ button {
 .led-dot {
   width: 8px;
   height: 8px;
-  background: #00ffcc;
-  box-shadow: 0 0 6px #00ffcc, 0 0 0 2px #000;
+  background: var(--accent-2);
+  box-shadow: 0 0 6px var(--accent-2), 0 0 0 2px #000;
   flex-shrink: 0;
 }
 
@@ -251,7 +251,7 @@ button {
 
 .section-pixel-title {
   font-size: 1.1rem; /* Pinalaki mula 0.9rem */
-  color: #ffcc00;
+  color: var(--accent);
   margin: 0;
   text-align: left;
 }
@@ -266,7 +266,7 @@ button {
 }
 
 .menu-section:hover {
-  border-left-color: #ffcc00;
+  border-left-color: var(--accent);
 }
 
 .menu-section h3 {
@@ -281,8 +281,8 @@ button {
 
 .menu-section-num {
   background: #000;
-  color: #ffcc00;
-  border: 2px solid #ffcc00;
+  color: var(--accent);
+  border: 2px solid var(--accent);
   font-size: 0.6rem;
   padding: 3px 6px;
   display: inline-block;
@@ -344,7 +344,7 @@ button {
   padding: 16px 14px;
 }
 
-.mode-btn-pvp .btn-tag { color: #00ffcc; }
+.mode-btn-pvp .btn-tag { color: var(--accent-2); }
 .mode-btn-cpu .btn-tag { color: #ff66c4; }
 
 .mode-btn-pvp.active .btn-tag,
@@ -354,7 +354,7 @@ button {
 }
 
 .btn-group-pixel button.mode-btn-pvp.active {
-  background: #00ffcc;
+  background: var(--accent-2);
   color: #000;
   box-shadow: 3px 3px 0px #000, 0 0 0 3px rgba(0, 255, 204, 0.35);
 }
@@ -375,7 +375,7 @@ button {
 }
 
 .btn-group-pixel button.active {
-  background: #ffcc00; /* Coin Yellow Active state */
+  background: var(--accent); /* Coin Yellow Active state */
   color: #000;
   border-color: #000;
   box-shadow: 3px 3px 0px #000, 0 0 0 3px rgba(255, 204, 0, 0.35);
@@ -423,7 +423,7 @@ button {
 /* Custom retro scrollbar */
 .matches-log-list::-webkit-scrollbar { width: 8px; }
 .matches-log-list::-webkit-scrollbar-track { background: #000; }
-.matches-log-list::-webkit-scrollbar-thumb { background: #ffcc00; border: 1px solid #000; }
+.matches-log-list::-webkit-scrollbar-thumb { background: var(--accent); border: 1px solid #000; }
 
 .no-saves-banner {
   font-size: 0.75rem;
@@ -442,7 +442,7 @@ button {
 
 .save-data-card:hover {
   background: #33383f;
-  border-color: #00ffcc;
+  border-color: var(--accent-2);
 }
 
 .card-top {
@@ -460,7 +460,7 @@ button {
 
 .save-time-badge {
   font-size: 0.65rem;
-  color: #ffcc00;
+  color: var(--accent);
 }
 
 .card-mid {
@@ -473,7 +473,7 @@ button {
 }
 
 .card-status {
-  color: #00ffcc;
+  color: var(--accent-2);
   margin-top: 4px;
   font-weight: bold;
 }
@@ -571,7 +571,7 @@ button {
 
 .monitor-title {
   font-size: 0.55rem;
-  color: #ffcc00;
+  color: var(--accent);
   margin-bottom: 6px;
 }
 
@@ -584,7 +584,7 @@ button {
 
 .stage-info {
   font-size: 0.55rem;
-  color: #00ffcc;
+  color: var(--accent-2);
   margin-top: 6px;
 }
 
@@ -658,7 +658,7 @@ button {
   box-shadow: 2px 2px 0px #000;
 }
 
-.action-save { background: #00ffcc; }
+.action-save { background: var(--accent-2); }
 .action-forfeit { background: #9ca3af; }
 .action-continue { background: #4ade80; }
 .action-restart { background: #fde047; }
@@ -696,14 +696,14 @@ button {
   width: 85%;
   max-width: 460px;
   text-align: center;
-  background: #1f2226 !important;
-  border-color: #ffcc00 !important;
+  background: var(--panel-bg, #1f2226) !important;
+  border-color: var(--accent) !important;
   box-shadow: 8px 8px 0px #000 !important;
 }
 
 .modal-title-pixel {
   font-size: 1rem;
-  color: #00ffcc;
+  color: var(--accent-2);
   margin-top: 0;
   margin-bottom: 18px;
 }
@@ -725,11 +725,11 @@ button {
 }
 
 /* ── <PixelModal> (reusable retro dialog) ── */
-.pixel-modal.tone-info { border-color: #00ffcc !important; }
+.pixel-modal.tone-info { border-color: var(--accent-2) !important; }
 .pixel-modal.tone-alert { border-color: #ff3333 !important; }
-.pixel-modal.tone-gold { border-color: #ffcc00 !important; }
+.pixel-modal.tone-gold { border-color: var(--accent) !important; }
 .pixel-modal.tone-alert .modal-title-pixel { color: #ff3333; }
-.pixel-modal.tone-gold .modal-title-pixel { color: #ffcc00; }
+.pixel-modal.tone-gold .modal-title-pixel { color: var(--accent); }
 
 /* CRT scanlines (the modal's flat background would otherwise hide them) */
 .pixel-modal.has-scanlines {
@@ -757,7 +757,7 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
-.pixel-modal-actions button.pixel-modal-confirm { background: #00ffcc; color: #000; }
+.pixel-modal-actions button.pixel-modal-confirm { background: var(--accent-2); color: #000; }
 .pixel-modal-actions button.pixel-modal-confirm:hover { background: #33ffdd; }
 .pixel-modal-actions button.pixel-modal-danger { background: #ef4444; color: #000; }
 .pixel-modal-actions button.pixel-modal-danger:hover { background: #f87171; }
@@ -769,11 +769,11 @@ button {
 
 /* ── GAME OVER MODAL (checkmate / draw / time-out) ── */
 .modal-title-pixel.winner-title {
-  color: #ffcc00;
+  color: var(--accent);
 }
 
 .game-over-btn-replay {
-  background: #00ffcc !important;
+  background: var(--accent-2) !important;
   color: #000 !important;
   border-color: #000 !important;
 }
@@ -829,7 +829,7 @@ button {
   box-shadow: 0px 0px 0px #000;
 }
 
-.promo-queen:hover { background: #ffcc00; color: #000; }
+.promo-queen:hover { background: var(--accent); color: #000; }
 .promo-rook:hover { background: #fde047; color: #000; }
 .promo-bishop:hover { background: #4ade80; color: #000; }
 .promo-knight:hover { background: #3399ff; color: #fff; }
@@ -866,7 +866,7 @@ button {
 }
 
 .wizard-progress-dot.active {
-  background: #ffcc00;
+  background: var(--accent);
   box-shadow: 2px 2px 0px #000, 0 0 0 3px rgba(255, 204, 0, 0.35);
   transform: scale(1.15);
 }
@@ -917,7 +917,7 @@ button {
 }
 
 .wizard-next-btn {
-  background: #00ffcc;
+  background: var(--accent-2);
   color: #000;
 }
 
@@ -1849,7 +1849,7 @@ body::after {
 
 /* Paint the page colour on <html> so the starfield (body::before/::after,
    negative z-index) shows above it instead of under body's background. */
-html:root { background: #181c26 !important; }
+html:root { background: var(--page-bg, #181c26) !important; }
 body { background: transparent !important; }
 
 /* Arcade "insert coin" pulse on START once a game is configured. */
@@ -1948,7 +1948,7 @@ body { background: transparent !important; }
   font-family: 'Press Start 2P', monospace;
   font-size: 0.65rem;
   color: #120a1a;
-  background: #00ffcc;
+  background: var(--accent-2);
   border: 4px solid #000;
   box-shadow: 4px 4px 0 #000;
   cursor: pointer;

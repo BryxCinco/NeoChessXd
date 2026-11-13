@@ -32,6 +32,7 @@ export function GameModals({
   onDownloadPgn,
   onChangeSetting,
   onResetSettings,
+  onToggleEffect,
 }) {
   if (!activeModal) return null;
   const disabled = !!(isAnimatingMove || pendingPromotion);
@@ -91,7 +92,7 @@ export function GameModals({
 
     case 'settings':
       return (
-        <SettingsModal settings={settings} onChange={onChangeSetting} onReset={onResetSettings} onClose={close} />
+        <SettingsModal settings={settings} onChange={onChangeSetting} onToggleEffect={onToggleEffect} onReset={onResetSettings} onClose={close} />
       );
 
     case 'confirm_resign':

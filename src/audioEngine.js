@@ -19,6 +19,29 @@ function outputAt(ctx, level) {
   return out;
 }
 
+// A burst of filtered white noise (cracks, hisses, thumps).
+function playNoise(ctx, out, { duration, type = 'lowpass', from = 800, to = from, level = 0.2, delay = 0 }) {
+  const start = ctx.currentTime + delay;
+  const size = Math.max(1, Math.floor(ctx.sampleRate * duration));
+  const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = type;
+  filter.frequency.setValueAtTime(from, start);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(20, to), start + duration);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(level, start);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(out);
+  noise.start(start);
+  noise.stop(start + duration);
+}
+
 export const playRetroSound = (type, audioCtxRef) => {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -354,6 +377,101 @@ export const playRetroSound = (type, audioCtxRef) => {
       gain.connect(out);
       osc.start();
       osc.stop(ctx.currentTime + 0.45);
+    }
+    else if (type === 'chainsaw') {
+      // engine: a low sawtooth whose pitch revs up and wobbles, plus grit
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(70, t);
+      osc.frequency.linearRampToValueAtTime(190, t + 0.18);
+      for (let i = 0; i < 6; i++) osc.frequency.setValueAtTime(i % 2 ? 150 : 210, t + 0.2 + i * 0.07);
+      osc.frequency.exponentialRampToValueAtTime(60, t + 0.8);
+      gain.gain.setValueAtTime(0.16, t);
+      gain.gain.setValueAtTime(0.2, t + 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(t);
+      osc.stop(t + 0.8);
+      playNoise(ctx, out, { duration: 0.6, type: 'bandpass', from: 1800, to: 900, level: 0.12, delay: 0.15 });
+    }
+    else if (type === 'stone_crack') {
+      // three dry cracks, then a low crumble
+      [0, 0.09, 0.2].forEach((delay, i) => playNoise(ctx, out, { duration: 0.06, type: 'highpass', from: 2400 - i * 500, to: 1200, level: 0.3, delay }));
+      playNoise(ctx, out, { duration: 0.32, type: 'lowpass', from: 500, to: 90, level: 0.35, delay: 0.3 });
+    }
+    else if (type === 'soul') {
+      // airy rising tone with a slow shimmer
+      const t = ctx.currentTime;
+      [1, 1.5].forEach((ratio, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(260 * ratio, t);
+        osc.frequency.exponentialRampToValueAtTime(1040 * ratio, t + 0.95);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(i ? 0.05 : 0.12, t + 0.2);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.95);
+        osc.connect(gain);
+        gain.connect(out);
+        osc.start(t);
+        osc.stop(t + 0.95);
+      });
+      playNoise(ctx, out, { duration: 0.9, type: 'bandpass', from: 600, to: 3200, level: 0.05 });
+    }
+    else if (type === 'drain') {
+      // gurgling notes stepping downwards
+      const t = ctx.currentTime;
+      for (let i = 0; i < 9; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const at = t + i * 0.07;
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520 - i * 42, at);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(60, 300 - i * 30), at + 0.06);
+        gain.gain.setValueAtTime(0.16, at);
+        gain.gain.exponentialRampToValueAtTime(0.01, at + 0.07);
+        osc.connect(gain);
+        gain.connect(out);
+        osc.start(at);
+        osc.stop(at + 0.07);
+      }
+    }
+    else if (type === 'thud') {
+      // heavy body hitting the floor (lands with the squash, ~150 ms in)
+      const t = ctx.currentTime + 0.14;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(130, t);
+      osc.frequency.exponentialRampToValueAtTime(38, t + 0.28);
+      gain.gain.setValueAtTime(0.6, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.32);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(t);
+      osc.stop(t + 0.32);
+      playNoise(ctx, out, { duration: 0.14, type: 'lowpass', from: 900, to: 150, level: 0.35, delay: 0.14 });
+    }
+    else if (type === 'sizzle') {
+      // three drips, then hissing that dies away
+      const t = ctx.currentTime;
+      [0.16, 0.23, 0.3].forEach((delay) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(900, t + delay);
+        osc.frequency.exponentialRampToValueAtTime(300, t + delay + 0.05);
+        gain.gain.setValueAtTime(0.12, t + delay);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + delay + 0.05);
+        osc.connect(gain);
+        gain.connect(out);
+        osc.start(t + delay);
+        osc.stop(t + delay + 0.05);
+      });
+      playNoise(ctx, out, { duration: 0.7, type: 'highpass', from: 3500, to: 6000, level: 0.14, delay: 0.18 });
     }
     else if (type === 'check_alert') {
       const osc = ctx.createOscillator();

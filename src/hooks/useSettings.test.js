@@ -17,7 +17,7 @@ afterEach(() => {
 describe('useSettings', () => {
   it('starts from the defaults: full volume, everything on, classic board', () => {
     const { result } = renderHook(() => useSettings());
-    expect(result.current.settings).toEqual({
+    expect(result.current.settings).toMatchObject({
       musicVolume: 100,
       sfxVolume: 100,
       animations: true,
@@ -37,7 +37,7 @@ describe('useSettings', () => {
     act(() => first.result.current.updateSetting('animations', false));
     act(() => first.result.current.updateSetting('screenFx', false));
     act(() => first.result.current.updateSetting('boardTheme', 'gameboy'));
-    expect(stored()).toEqual({ musicVolume: 40, sfxVolume: 0, animations: false, screenFx: false, boardTheme: 'gameboy' });
+    expect(stored()).toMatchObject({ musicVolume: 40, sfxVolume: 0, animations: false, screenFx: false, boardTheme: 'gameboy' });
     first.unmount();
 
     const second = renderHook(() => useSettings()); // "reload"

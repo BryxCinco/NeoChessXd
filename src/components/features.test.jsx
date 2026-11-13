@@ -350,7 +350,7 @@ describe('SettingsModal', () => {
     const { onChange } = renderSettings();
     const group = screen.getByRole('radiogroup', { name: 'BOARD THEME' });
     const options = within(group).getAllByRole('radio');
-    expect(options.map((o) => o.textContent)).toEqual(['CLASSIC', 'GAME BOY', 'NES', 'CRT AMBER']);
+    expect(options.map((o) => o.textContent)).toEqual(['CLASSIC', 'GAME BOY', 'NES', 'CRT AMBER', 'CURSED', 'NEON']);
     expect(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'CLASSIC' })).toBeChecked();
 
     await userEvent.click(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'GAME BOY' }));

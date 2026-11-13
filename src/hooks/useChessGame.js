@@ -115,15 +115,16 @@ function formatTime(seconds) {
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
 // `animations: false` (settings) skips the capture effects and the
-// checkmate cage. `notify(text, tone)` shows a toast.
-export function useChessGame({ audio, activeModal, setActiveModal, animations = true, notify = () => {} }) {
+// checkmate cage. `notify(text, tone)` shows a toast. `effects` are the
+// player's effect settings (see usePixelAnimation).
+export function useChessGame({ audio, activeModal, setActiveModal, animations = true, notify = () => {}, effects }) {
   const boardWrapperRef = useRef(null);
   const boardInnerRef = useRef(null);
   const countdownTimersRef = useRef([]);
   // Bumped on every board reset / undo so a capture animation that finishes
   // afterwards can't apply its stale move to the new board.
   const moveTokenRef = useRef(0);
-  const { canvasRef, triggerCaptureAnimation, triggerElimination, clearAnimations } = usePixelAnimation();
+  const { canvasRef, triggerCaptureAnimation, triggerElimination, triggerEffect, clearAnimations } = usePixelAnimation(effects);
 
   const [gameMode, setGameMode] = useState(null);
   const [difficulty, setDifficulty] = useState(null);
@@ -522,7 +523,12 @@ export function useChessGame({ audio, activeModal, setActiveModal, animations = 
       setIsAnimatingMove(true);
       setHiddenSquare(square);
       const victimCode = (played.color === 'w' ? 'b' : 'w') + played.captured.toUpperCase();
-      const sound = triggerElimination(square, victimCode, played.piece, played.color, commit);
+      const sound = triggerElimination(square, victimCode, played.piece, played.color, commit, {
+        from: played.from,
+        // some effects draw the capturing piece themselves (it drops onto
+        // its victim), so the real one is lifted off the board as well
+        onEffect: (effect) => effect.hidesAttacker && setHiddenSquare([square, played.from]),
+      });
       if (sound) audio.play(sound);
       setTimeout(commit, CAPTURE_SAFETY_MS);
     };
@@ -551,6 +557,7 @@ export function useChessGame({ audio, activeModal, setActiveModal, animations = 
 
     audio.play('click');
     commit();
+    if (played.promotion && animations && triggerEffect) triggerEffect('promotion', played.to);
     return true;
   }
 
@@ -964,9 +971,10 @@ export function useChessGame({ audio, activeModal, setActiveModal, animations = 
   const displayPosition = useMemo(() => {
     if (reviewFen) return reviewFen;
     if (!hiddenSquare) return game.fen();
+    const hidden = [].concat(hiddenSquare); // one square, or several
     const position = {};
     for (const row of game.board()) {
-      for (const p of row) if (p && p.square !== hiddenSquare) position[p.square] = p.color + p.type.toUpperCase();
+      for (const p of row) if (p && !hidden.includes(p.square)) position[p.square] = p.color + p.type.toUpperCase();
     }
     return position;
   }, [game, hiddenSquare, reviewFen]);

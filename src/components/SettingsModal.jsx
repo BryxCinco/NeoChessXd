@@ -2,11 +2,15 @@ import { PixelModal } from './PixelModal';
 import { BOARD_THEMES } from '../hooks/useSettings';
 import { PIECE_SKINS } from '../pieceSkins.js';
 import { PieceSprite } from '../pixelPieces';
+import { listEffects } from '../effects/index.js';
 
-function VolumeSlider({ id, label, value, onChange }) {
+function VolumeSlider({ id, label, note, value, onChange, disabled = false }) {
   return (
     <div className="settings-row">
-      <label htmlFor={id} className="settings-label">{label}</label>
+      <label htmlFor={id} className="settings-label">
+        {label}
+        {note && <span className="settings-note">{note}</span>}
+      </label>
       <input
         id={id}
         type="range"
@@ -15,6 +19,7 @@ function VolumeSlider({ id, label, value, onChange }) {
         max="100"
         step="5"
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <output htmlFor={id} className="settings-value">{value}</output>
@@ -43,8 +48,84 @@ function Toggle({ label, note, checked, onChange }) {
   );
 }
 
+const TRIGGER_LABEL = { capture: 'CAPTURE', checkmate: 'CHECKMATE', promotion: 'PROMOTION', check: 'CHECK', move: 'MOVE', theme_change: 'THEME CHANGE' };
+
+// Master switch, capture-effect chooser, intensity, and one switch per effect.
+function EffectsSection({ settings, onChange, onToggleEffect }) {
+  const effects = listEffects();
+  const captureEffects = effects.filter((e) => e.trigger === 'capture');
+  const off = settings.disabledEffects || [];
+  const enabled = settings.effectsEnabled;
+  const onCount = effects.filter((e) => !off.includes(e.id)).length;
+
+  return (
+    <section className="settings-section" aria-labelledby="settings-effects-title">
+      <h3 className="settings-section-title" id="settings-effects-title">EFFECTS</h3>
+      <Toggle
+        label="ALL EFFECTS"
+        note="OFF = FASTEST, FOR SLOW PHONES"
+        checked={enabled}
+        onChange={(v) => onChange('effectsEnabled', v)}
+      />
+      <div className="settings-row">
+        <label htmlFor="settings-capture-effect" className="settings-label">
+          CAPTURE EFFECT
+          <span className="settings-note">RANDOM, OR ALWAYS THE SAME ONE</span>
+        </label>
+        <select
+          id="settings-capture-effect"
+          className="settings-select"
+          value={settings.captureEffect}
+          disabled={!enabled}
+          onChange={(e) => onChange('captureEffect', e.target.value)}
+        >
+          <option value="random">RANDOM</option>
+          {captureEffects.map((e) => (
+            <option key={e.id} value={e.id} disabled={off.includes(e.id)}>
+              {e.name}{e.attackers ? ` (${e.attackers.map((a) => PIECE_NAME[a]).join('/')})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      <VolumeSlider
+        id="settings-intensity"
+        label="EFFECT INTENSITY"
+        note="FEWER PARTICLES = FASTER"
+        value={settings.effectIntensity}
+        disabled={!enabled}
+        onChange={(v) => onChange('effectIntensity', v)}
+      />
+      <details className="settings-effects">
+        <summary>EFFECT LIST ({onCount}/{effects.length} ON)</summary>
+        <div className="settings-effect-grid">
+          {effects.map((e) => {
+            const on = !off.includes(e.id);
+            return (
+              <button
+                key={e.id}
+                type="button"
+                role="switch"
+                aria-checked={on}
+                aria-label={e.name}
+                title={`${TRIGGER_LABEL[e.trigger]} EFFECT`}
+                disabled={!enabled}
+                className={`settings-effect ${on ? 'is-on' : ''}`}
+                onClick={() => onToggleEffect(e.id, !on)}
+              >
+                <span className="settings-effect-led" aria-hidden="true" />
+                {e.name}
+              </button>
+            );
+          })}
+        </div>
+      </details>
+    </section>
+  );
+}
+const PIECE_NAME = { p: 'PAWN', n: 'KNIGHT', b: 'BISHOP', r: 'ROOK', q: 'QUEEN', k: 'KING' };
+
 // Player preferences. Every change applies and is saved immediately.
-export function SettingsModal({ settings, onChange, onReset, onClose }) {
+export function SettingsModal({ settings, onChange, onToggleEffect = () => {}, onReset, onClose }) {
   return (
     <PixelModal title="[SETTINGS]" onCancel={onClose} confirmLabel="DONE" onConfirm={onClose}>
       <div className="settings-panel">
@@ -123,6 +204,8 @@ export function SettingsModal({ settings, onChange, onReset, onClose }) {
             ))}
           </div>
         </div>
+
+        <EffectsSection settings={settings} onChange={onChange} onToggleEffect={onToggleEffect} />
 
         <button type="button" className="settings-reset" onClick={onReset}>
           RESET TO DEFAULTS

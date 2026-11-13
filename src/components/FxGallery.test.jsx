@@ -1,6 +1,7 @@
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { FxGallery } from './FxGallery';
 import { EFFECT_POOLS, EFFECT_LABELS, FX_SOUND } from '../fx/eliminationFx';
+import { listEffects, liveEffectCount } from '../effects/index.js';
 
 // jsdom has no canvas. This stand-in accepts any drawing call: every
 // property is the same callable object, and it reads as 0 in arithmetic.
@@ -30,9 +31,9 @@ describe('FxGallery', () => {
   it('lists a button for every effect of every piece', () => {
     render(<FxGallery onClose={() => {}} play={() => {}} />);
     expect(screen.getByRole('dialog', { name: 'Effects gallery' })).toBeInTheDocument();
-    const total = Object.values(EFFECT_POOLS).reduce((n, pool) => n + pool.length, 0);
-    expect(document.querySelectorAll('.fx-btn')).toHaveLength(total);
-    for (const name of ['PAWN', 'KNIGHT', 'BISHOP', 'ROOK', 'QUEEN', 'KING']) {
+    expect(document.querySelectorAll('.fx-btn')).toHaveLength(listEffects().length);
+    for (const effect of listEffects()) expect(screen.getByRole('button', { name: effect.name })).toBeInTheDocument();
+    for (const name of ['PAWN', 'KNIGHT', 'BISHOP', 'ROOK', 'QUEEN', 'KING', 'ANY PIECE', 'SPECIAL']) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
   });
@@ -65,6 +66,7 @@ describe('FxGallery', () => {
     act(() => vi.advanceTimersByTime(6000)); // longer than any effect
     expect(button).not.toHaveClass('is-playing');
     expect(play).toHaveBeenCalledTimes(1);
+    expect(liveEffectCount()).toBe(0); // the finished effect was cleaned up
   });
 
   it('PLAY ALL runs the effects one after another', () => {

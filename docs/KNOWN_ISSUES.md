@@ -76,8 +76,7 @@ that only talks to those APIs cannot be exercised there.
 | File | Line coverage | Why |
 | --- | --- | --- |
 | `src/audioEngine.js` | low | Builds oscillators and gain nodes with the Web Audio API. The volume routing is tested against a fake `AudioContext`; the sounds themselves are not. |
-| `src/usePixelAnimation.js` | low | The capture effects are drawn frame by frame on a canvas. |
-| `src/fx/eliminationFx.js` | partial | Same: canvas drawing. The gallery test runs each effect against a fake 2D context, which proves they do not throw but not what they look like. |
+| `src/effects/*.js`, `src/fx/eliminationFx.js` | high, but shallow | Canvas drawing. Every effect is played start to finish against a fake 2D context, which proves it runs, ends and cleans up, but not what it looks like. Looks are checked in the FX GALLERY. |
 | `src/App.jsx` | 0% | Pure wiring of hooks to components, with no logic of its own. It is covered by the browser smoke test instead of unit tests. |
 
 Features that depend on those APIs and so are checked by hand or in the

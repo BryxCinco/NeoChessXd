@@ -1,0 +1,95 @@
+/* ── THEMES ──
+   The values come from src/themes/themes.js: applyTheme() writes them on
+   <html> as custom properties (and sets data-theme="..."), so the theme
+   list has a single source of truth. This file holds the defaults (the
+   Classic look) and the rules that use them. */
+:root {
+  --page-bg: #181c26;
+  --app-bg: radial-gradient(ellipse at 50% 30%, #232a3d 0%, #181c26 60%, #10131b 100%);
+  --panel-bg: #2a2d32;
+  --grid-bg: transparent;
+  --accent: #ffcc00;
+  --accent-2: #00ffcc;
+  --board-border: #ffcc00;
+  --board-highlight: #ffcc00;
+  --particle: #ffd83a;
+  --stars-opacity: 0.55;
+  --theme-font: 'Press Start 2P', monospace;
+}
+
+html:root { transition: background-color 0.3s; }
+.pixel-art { font-family: var(--theme-font); }
+
+/* The page backdrop: the theme's gradient or pixel-art scene, behind the
+   starfield and everything else. Anchored to the bottom so the ground of a
+   scene always shows; "cover" keeps it filling any screen. */
+.theme-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background: var(--app-bg);
+  background-position: center bottom;
+  background-size: cover;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+/* a light veil so text and panels stay readable over bright scenes */
+.theme-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 6, 14, 0.38);
+}
+html[data-theme='classic'] .theme-backdrop::after { background: none; }
+
+body::before { opacity: var(--stars-opacity); }
+.game-grid-pixel { background: var(--grid-bg); }
+
+/* Text that sits directly on the backdrop gets a pixel shadow. */
+.game-header, .top-controls-row, .menu-section-note { text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.75); }
+
+/* ── theme switch: fade to black, glitch, fade back in ── */
+.theme-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+  background: #000;
+  overflow: hidden;
+}
+.theme-fade.is-out { animation: themeFadeOut 200ms linear both; }
+.theme-fade.is-in { animation: themeFadeIn 300ms linear both; }
+.theme-fade::before,
+.theme-fade::after {
+  content: '';
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  height: 9%;
+  background: var(--accent);
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  animation: themeGlitch 250ms steps(5, end) both;
+}
+.theme-fade::before { top: 22%; }
+.theme-fade::after { top: 61%; height: 5%; background: var(--accent-2); animation-direction: reverse; }
+@keyframes themeFadeOut { from { opacity: 0; } to { opacity: 1; } }
+@keyframes themeFadeIn { from { opacity: 1; } to { opacity: 0; } }
+@keyframes themeGlitch {
+  0% { transform: translate(-6%, 0); }
+  20% { transform: translate(5%, 40px); }
+  40% { transform: translate(-3%, -30px); }
+  60% { transform: translate(7%, 90px); }
+  80% { transform: translate(-5%, -70px); }
+  100% { transform: translate(0, 0); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-fade::before, .theme-fade::after { display: none; }
+}
+
+/* The move list is see-through by design; over a busy scene it needs a
+   solid panel behind it to stay readable. */
+html:not([data-theme='classic']) .scoresheet-container {
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent) !important;
+}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './App.css';
 import './styles/features.css';
+import './styles/themes.css';
 
 import { useAudio, useBgmLoop } from './hooks/useAudio';
 import { useChessGame } from './hooks/useChessGame';
@@ -9,6 +10,7 @@ import { useMenuWizard } from './hooks/useMenuWizard';
 import { useResponsiveLayout, useScrollLock, useScrollTopOnChange } from './hooks/useResponsiveLayout';
 import { useSettings } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
+import { useThemeTransition } from './hooks/useThemeTransition';
 import { copyText, downloadText, pgnFileName } from './game/pgnExport';
 
 import { CountdownOverlay } from './components/CountdownOverlay';
@@ -28,9 +30,15 @@ function App() {
   const [showGallery, setShowGallery] = useState(false);
 
   const audio = useAudio();
-  const { settings, updateSetting, resetSettings, theme } = useSettings();
+  const { settings, updateSetting, toggleEffect, resetSettings, theme } = useSettings();
   const { toast, notify, dismiss: dismissToast } = useToast();
-  const chess = useChessGame({ audio, activeModal, setActiveModal, animations: settings.animations, notify });
+  // A theme change fades through black; every other setting applies at once.
+  const themeFade = useThemeTransition((id) => updateSetting('boardTheme', id), settings.animations && settings.screenFx);
+  const changeSetting = (key, value) => {
+    if (key === 'boardTheme' && value !== settings.boardTheme) themeFade.changeTheme(value);
+    else updateSetting(key, value);
+  };
+  const chess = useChessGame({ audio, activeModal, setActiveModal, animations: settings.animations, notify, effects: settings });
   const matches = useSavedMatches({ chess, audio, setActiveModal });
   const wizard = useMenuWizard({ chess, matches, audio });
   const { isCompactLayout } = useResponsiveLayout();
@@ -69,6 +77,8 @@ function App() {
 
   return (
     <PieceSkinContext.Provider value={settings.pieceSkin}>
+    <div className="theme-backdrop" aria-hidden="true" />
+    {themeFade.phase && <div className={`theme-fade is-${themeFade.phase}`} aria-hidden="true" />}
     <div
       className={`app-container pixel-art ${chess.gameStarted ? 'game-active' : ''} ${
         showCheckFlash ? 'screen-flash-active' : ''
@@ -227,8 +237,9 @@ function App() {
         onAnswerDraw={chess.respondToDraw}
         onCopyPgn={copyPgn}
         onDownloadPgn={downloadPgn}
-        onChangeSetting={updateSetting}
+        onChangeSetting={changeSetting}
         onResetSettings={resetSettings}
+        onToggleEffect={toggleEffect}
       />
 
       {!chess.gameStarted ? (
