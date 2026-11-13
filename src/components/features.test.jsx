@@ -351,12 +351,12 @@ describe('SettingsModal', () => {
     const group = screen.getByRole('radiogroup', { name: 'BOARD THEME' });
     const options = within(group).getAllByRole('radio');
     expect(options.map((o) => o.textContent)).toEqual(['CLASSIC', 'GAME BOY', 'NES', 'CRT AMBER']);
-    expect(screen.getByRole('radio', { name: 'CLASSIC' })).toBeChecked();
+    expect(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'CLASSIC' })).toBeChecked();
 
-    await userEvent.click(screen.getByRole('radio', { name: 'GAME BOY' }));
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'GAME BOY' }));
     expect(onChange).toHaveBeenLastCalledWith('boardTheme', 'gameboy');
-    expect(screen.getByRole('radio', { name: 'GAME BOY' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'CLASSIC' })).not.toBeChecked();
+    expect(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'GAME BOY' })).toBeChecked();
+    expect(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'CLASSIC' })).not.toBeChecked();
 
     await userEvent.click(screen.getByRole('radio', { name: 'CRT AMBER' }));
     expect(onChange).toHaveBeenLastCalledWith('boardTheme', 'amber');
@@ -367,7 +367,7 @@ describe('SettingsModal', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'NES' }));
     await click('RESET TO DEFAULTS');
     expect(onReset).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('radio', { name: 'CLASSIC' })).toBeChecked();
+    expect(within(screen.getByRole('radiogroup', { name: 'BOARD THEME' })).getByRole('radio', { name: 'CLASSIC' })).toBeChecked();
 
     await click('DONE');
     await userEvent.keyboard('{Escape}');

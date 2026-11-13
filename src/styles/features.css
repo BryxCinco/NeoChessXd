@@ -454,3 +454,24 @@ html.no-screen-fx .bento-pixel,
 html.no-screen-fx .pixel-modal.has-scanlines {
   background-image: none !important;
 }
+
+/* ── PIECE SKIN PICKER ── */
+.settings-skins { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.settings-skin { flex-direction: column; gap: 6px; }
+.skin-preview {
+  display: flex;
+  border: 2px solid #120a1a;
+}
+.skin-preview > span {
+  display: flex;
+  padding: 2px;
+}
+
+/* Long settings list: scroll inside the panel so DONE stays on screen. */
+.settings-panel {
+  max-height: min(60dvh, 540px);
+  overflow-y: auto;
+  padding: 2px 8px 6px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #ffcc00 #1c1e24;
+}

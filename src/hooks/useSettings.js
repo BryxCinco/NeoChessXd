@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { setAudioVolumes } from '../audioEngine';
+import { PIECE_SKINS, DEFAULT_PIECE_SKIN, setActivePieceSkin } from '../pieceSkins.js';
 
 export const SETTINGS_KEY = 'neochess_settings';
+// The piece skin has its own key, so it can be read (or reset) on its own.
+export const PIECE_SKIN_KEY = 'neochess_piece_skin';
 
 // Board colour palettes. `light` / `dark` are the two square colours.
 export const BOARD_THEMES = {
@@ -17,6 +20,7 @@ export const DEFAULT_SETTINGS = {
   animations: true, // capture effects, board slides, idle bobbing
   screenFx: true, // scanlines, starfield, screen flash
   boardTheme: 'classic',
+  pieceSkin: DEFAULT_PIECE_SKIN, // see src/pieceSkins.js
 };
 
 const clampVolume = (v) => Math.min(100, Math.max(0, Math.round(Number(v))));
@@ -33,15 +37,24 @@ export function sanitizeSettings(raw) {
     if (typeof raw[key] === 'boolean') out[key] = raw[key];
   }
   if (Object.hasOwn(BOARD_THEMES, raw.boardTheme)) out.boardTheme = raw.boardTheme;
+  if (Object.hasOwn(PIECE_SKINS, raw.pieceSkin)) out.pieceSkin = raw.pieceSkin;
   return out;
 }
 
 function loadSettings() {
+  let saved = null;
+  let pieceSkin;
   try {
-    return sanitizeSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY)));
+    saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    // corrupt or blocked: fall back to the defaults
   }
+  try {
+    pieceSkin = localStorage.getItem(PIECE_SKIN_KEY);
+  } catch {
+    // blocked storage
+  }
+  return sanitizeSettings({ ...(saved && typeof saved === 'object' ? saved : {}), pieceSkin });
 }
 
 // Player preferences, saved to localStorage on every change and applied to
@@ -52,7 +65,9 @@ export function useSettings() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      const { pieceSkin, ...rest } = settings;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
+      localStorage.setItem(PIECE_SKIN_KEY, pieceSkin);
     } catch {
       // blocked storage: settings still apply until the tab closes
     }
@@ -61,6 +76,11 @@ export function useSettings() {
   useEffect(() => {
     setAudioVolumes({ sfx: settings.sfxVolume / 100, music: settings.musicVolume / 100 });
   }, [settings.sfxVolume, settings.musicVolume]);
+
+  // the canvas capture effects draw the captured piece in the same skin
+  useEffect(() => {
+    setActivePieceSkin(settings.pieceSkin);
+  }, [settings.pieceSkin]);
 
   useEffect(() => {
     const root = document.documentElement;

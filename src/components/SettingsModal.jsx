@@ -1,5 +1,7 @@
 import { PixelModal } from './PixelModal';
 import { BOARD_THEMES } from '../hooks/useSettings';
+import { PIECE_SKINS } from '../pieceSkins.js';
+import { PieceSprite } from '../pixelPieces';
 
 function VolumeSlider({ id, label, value, onChange }) {
   return (
@@ -90,6 +92,33 @@ export function SettingsModal({ settings, onChange, onReset, onClose }) {
                   <span style={{ background: theme.light }} />
                 </span>
                 {theme.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-row settings-row-stacked">
+          <span className="settings-label" id="settings-skin-label">PIECE SKIN</span>
+          <div className="settings-themes settings-skins" role="radiogroup" aria-labelledby="settings-skin-label">
+            {Object.values(PIECE_SKINS).map((skin) => (
+              <button
+                key={skin.id}
+                type="button"
+                role="radio"
+                aria-checked={settings.pieceSkin === skin.id}
+                title={skin.description}
+                className={`settings-theme settings-skin ${settings.pieceSkin === skin.id ? 'is-active' : ''}`}
+                onClick={() => onChange('pieceSkin', skin.id)}
+              >
+                <span className="skin-preview" aria-hidden="true">
+                  <span style={{ background: BOARD_THEMES[settings.boardTheme].light }}>
+                    <PieceSprite code="wK" size={28} skin={skin.id} />
+                  </span>
+                  <span style={{ background: BOARD_THEMES[settings.boardTheme].dark }}>
+                    <PieceSprite code="bK" size={28} skin={skin.id} />
+                  </span>
+                </span>
+                {skin.name}
               </button>
             ))}
           </div>

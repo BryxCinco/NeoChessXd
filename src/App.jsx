@@ -19,6 +19,7 @@ import { PixelToast } from './components/PixelToast';
 import { StartMenuScreen } from './components/StartMenuScreen';
 import { GameBoardScreen } from './components/GameBoardScreen';
 import { PieceSprite } from './pixelPieces';
+import { PieceSkinContext } from './pieceSkinContext.js';
 import { PixelLogo } from './components/PixelLogo';
 import { FxGallery } from './components/FxGallery';
 
@@ -67,6 +68,7 @@ function App() {
   const showCheckFlash = chess.kingCheckedAlert && chess.gameStarted && !chess.isGameOver;
 
   return (
+    <PieceSkinContext.Provider value={settings.pieceSkin}>
     <div
       className={`app-container pixel-art ${chess.gameStarted ? 'game-active' : ''} ${
         showCheckFlash ? 'screen-flash-active' : ''
@@ -313,6 +315,7 @@ function App() {
         </div>
       )}
     </div>
+    </PieceSkinContext.Provider>
   );
 }
 

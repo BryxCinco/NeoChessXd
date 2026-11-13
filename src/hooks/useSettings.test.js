@@ -23,6 +23,7 @@ describe('useSettings', () => {
       animations: true,
       screenFx: true,
       boardTheme: 'classic',
+      pieceSkin: 'classic',
     });
     expect(result.current.theme).toBe(BOARD_THEMES.classic);
     expect(root()).not.toHaveClass('no-animations');
@@ -40,7 +41,7 @@ describe('useSettings', () => {
     first.unmount();
 
     const second = renderHook(() => useSettings()); // "reload"
-    expect(second.result.current.settings).toEqual(stored());
+    expect(second.result.current.settings).toEqual({ ...stored(), pieceSkin: 'classic' });
     expect(second.result.current.theme).toBe(BOARD_THEMES.gameboy);
   });
 
@@ -107,7 +108,7 @@ describe('useSettings', () => {
     act(() => result.current.updateSetting('animations', false));
     act(() => result.current.resetSettings());
     expect(result.current.settings).toEqual(DEFAULT_SETTINGS);
-    expect(stored()).toEqual(DEFAULT_SETTINGS);
+    expect({ ...stored(), pieceSkin: 'classic' }).toEqual(DEFAULT_SETTINGS);
     expect(root()).not.toHaveClass('no-animations');
   });
 
